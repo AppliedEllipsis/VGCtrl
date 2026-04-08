@@ -232,11 +232,33 @@ class PulsettoBluetoothV2 {
   // ==================== Protocol v2: Packet Handling ====================
 
   // Send a structured packet with optional acknowledgment wait
+  // Uses GATT operation queue to prevent "GATT operation already in progress" errors
   async sendPacket(packet, options = {}) {
     if (!this.canSendCommands) {
       throw new Error('Not connected - cannot send packet');
     }
 
+    // Queue the GATT operation
+    return this._queueGattOperation(() => this._doSendPacket(packet, options));
+  }
+
+  // Queue GATT operations to ensure serial execution
+  _queueGattOperation(operation) {
+    const queuedOperation = this._gattQueue.then(operation).catch(err => {
+      // If operation fails, we still need to resolve the queue
+      throw err;
+    });
+
+    // Update queue to include this operation
+    this._gattQueue = queuedOperation.catch(() => {
+      // Swallow errors to keep queue moving, error is thrown to caller
+    });
+
+    return queuedOperation;
+  }
+
+  // Internal: Actually send the packet (called within queue)
+  async _doSendPacket(packet, options) {
     const { waitForAck = false, timeout = 5000 } = options;
 
     // Store for potential retry
@@ -272,7 +294,7 @@ class PulsettoBluetoothV2 {
           timestamp: Date.now()
         });
         await new Promise(r => setTimeout(r, 100));
-        return this.sendPacket(packet, options);
+        return this._doSendPacket(packet, options);
       }
 
       throw error;
@@ -527,10 +549,12 @@ class PulsettoBluetoothV2 {
     if (!this.isConnected) return;
 
     try {
-      // Send status query as keepalive
-      await this.queryStatus();
+      // Send status query as keepalive - use queue to avoid conflicts
+      const packet = window.PulsettoProtocolV2.Commands.queryStatus();
+      await this._queueGattOperation(() => this.rxCharacteristic.writeValue(packet));
     } catch (e) {
-      console.warn('[BT-V2] Keepalive failed:', e);
+      // Silent fail - keepalive is best effort
+      console.warn('[BT-V2] Keepalive failed:', e.message);
     }
   }
 

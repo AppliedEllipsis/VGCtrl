@@ -1,2 +1,3 @@
 {"id":"5d4d4a30-a881-4db5-a9db-c0c39d3d2250","ts":"2026-04-08T20:21:53.871Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":true}
 {"id":"6faf6650-0e2a-46fe-9a22-9ccc4f2e01ef","ts":"2026-04-08T20:35:22.100Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":true}
+{"id":"a32777d8-2bb6-4527-a6d9-16f594d9c63a","ts":"2026-04-08T22:07:04.934Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}

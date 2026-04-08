@@ -591,6 +591,14 @@ class PulsettoApp {
     this._updateConnectionStatus(this.ble.connectionState);
     this._updateActionButtons();
     this._updateBreathingUI();
+    this._updateChannelButtons();
+  }
+
+  _updateChannelButtons() {
+    // Update channel override buttons to reflect current state
+    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+      if (btn) btn.classList.toggle('active', btn.dataset.channel === this.channelOverride);
+    });
   }
 
   _updateConnectionStatus(state) {

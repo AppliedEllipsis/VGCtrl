@@ -12,9 +12,11 @@
  * 5. No-op CSS animation - prevents some throttling
  * 6. MessageChannel - microtask scheduling
  * 7. Canvas rendering loop - keeps rendering thread alive
- * 8. Sync/periodic-sync APIs
- * 9. Aggressive interval pinging when hidden
- * 10. Tiny looping video element (Chrome prioritizes media tabs)
+ * 8. Video element with MediaRecorder-generated content (PRIMARY)
+ * 9. Sync/periodic-sync APIs
+ * 10. Aggressive interval pinging when hidden
+ * 11. Tiny looping video element data URI (BACKUP)
+ * 12. beforeunload warning
  */
 
 class BackgroundKeepalive {
@@ -38,6 +40,10 @@ class BackgroundKeepalive {
     this.noOpElement = null;
     this.notification = null;
     this.videoElement = null;
+    this.videoBlob = null;
+    this.videoRecorder = null;
+    this.videoRecorderCanvas = null;
+    this.videoRecorderStream = null;
     
     this._handleVisibilityChange = this._handleVisibilityChange.bind(this);
     this._handleBeforeUnload = this._handleBeforeUnload.bind(this);
@@ -359,10 +365,13 @@ class BackgroundKeepalive {
     }
   }
 
-  // Video Keepalive - Chrome deprioritizes throttling for media-playing tabs
-  _startVideoKeepalive() {
+  // ============================================================================
+  // VIDEO KEEPALIVE - PRIMARY: MediaRecorder, FALLBACK: Data URI
+  // ============================================================================
+  
+  async _startVideoKeepalive() {
     try {
-      // Create a tiny 1x1 pixel video element
+      // Create video element first
       this.videoElement = document.createElement('video');
       this.videoElement.style.cssText = `
         position: fixed;
@@ -374,45 +383,242 @@ class BackgroundKeepalive {
         pointer-events: none;
         z-index: -9999;
       `;
-      
-      // Muted, looped, playsinline attributes to allow autoplay
       this.videoElement.setAttribute('muted', '');
       this.videoElement.setAttribute('autoplay', '');
       this.videoElement.setAttribute('loop', '');
       this.videoElement.setAttribute('playsinline', '');
       this.videoElement.muted = true;
       
-      // Use a tiny data URI for a 1-second blank video
-      // This is a minimal valid WebM (VP8 codec, 100ms duration, 2x2 pixels, silent)
-      // Format: WebM (VP8 video + Vorbis audio, though audio is silent)
-      const tinyWebM = 'data:video/webm;base64,GkXfowEAAAAAAAAfQoaBAUL3gQFC8oEEQvOBEDLoeBAICHxjHKmGGFXmZ2lnZYGDAAVQ2dlaQEAAQAAAH0EibWFgoaBkYBxgIABeyBtZWRpYaB5gIBnyw===';
-      
-      this.videoElement.src = tinyWebM;
-      
       document.body.appendChild(this.videoElement);
       
+      // Try PRIMARY method: MediaRecorder-generated video
+      let videoUrl = await this._generateVideoWithMediaRecorder();
+      
+      // FALLBACK 1: Data URI blob
+      if (!videoUrl) {
+        console.log('[Keepalive] Using fallback video (data URI)');
+        videoUrl = this._getFallbackVideoUrl();
+      }
+      
+      this.videoElement.src = videoUrl;
+      
       // Try to play
-      this.videoElement.play().catch(err => {
-        console.warn('[Keepalive] Video autoplay failed:', err);
-        // Fallback: try playing on first user interaction
-        const playOnInteraction = () => {
-          this.videoElement?.play();
-          document.removeEventListener('click', playOnInteraction);
-          document.removeEventListener('touchstart', playOnInteraction);
-        };
-        document.addEventListener('click', playOnInteraction);
-        document.addEventListener('touchstart', playOnInteraction);
+      const playVideo = async () => {
+        try {
+          await this.videoElement.play();
+          console.log('[Keepalive] Video keepalive active (method:', videoUrl.startsWith('blob:') ? 'MediaRecorder' : 'dataURI', ')');
+        } catch (err) {
+          console.warn('[Keepalive] Video autoplay failed:', err);
+          // Fallback: try playing on user interaction
+          const playOnInteraction = () => {
+            this.videoElement?.play().catch(() => {});
+            document.removeEventListener('click', playOnInteraction);
+            document.removeEventListener('touchstart', playOnInteraction);
+          };
+          document.addEventListener('click', playOnInteraction);
+          document.addEventListener('touchstart', playOnInteraction);
+        }
+      };
+      
+      playVideo();
+      
+    } catch (e) {
+      console.warn('[Keepalive] Video keepalive failed completely:', e);
+    }
+  }
+
+  // PRIMARY: Generate a real video using MediaRecorder + Canvas
+  async _generateVideoWithMediaRecorder() {
+    try {
+      // Check if MediaRecorder is supported
+      if (!window.MediaRecorder || !window.MediaRecorder.isTypeSupported) {
+        console.log('[Keepalive] MediaRecorder not supported');
+        return null;
+      }
+      
+      // Check for supported MIME types (prefer webm, fallback to mp4)
+      const mimeTypes = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4'
+      ];
+      
+      let selectedMime = null;
+      for (const mime of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mime)) {
+          selectedMime = mime;
+          break;
+        }
+      }
+      
+      if (!selectedMime) {
+        console.log('[Keepalive] No supported video MIME type found');
+        return null;
+      }
+      
+      console.log('[Keepalive] Using MediaRecorder with:', selectedMime);
+      
+      // Create a canvas for capturing frames
+      this.videoRecorderCanvas = document.createElement('canvas');
+      this.videoRecorderCanvas.width = 4;  // Tiny 4x4 pixels
+      this.videoRecorderCanvas.height = 4;
+      const ctx = this.videoRecorderCanvas.getContext('2d', { alpha: false });
+      
+      // Get stream from canvas
+      this.videoRecorderStream = this.videoRecorderCanvas.captureStream(10); // 10fps
+      
+      // Create MediaRecorder
+      this.videoRecorder = new MediaRecorder(this.videoRecorderStream, {
+        mimeType: selectedMime,
+        videoBitsPerSecond: 1000  // Very low bitrate - tiny file
       });
       
-      console.log('[Keepalive] Video keepalive active');
+      const chunks = [];
+      
+      this.videoRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+      
+      return new Promise((resolve, reject) => {
+        this.videoRecorder.onstop = () => {
+          try {
+            if (chunks.length === 0) {
+              reject(new Error('No video data recorded'));
+              return;
+            }
+            
+            const blob = new Blob(chunks, { type: selectedMime });
+            const url = URL.createObjectURL(blob);
+            this.videoBlob = blob;
+            
+            console.log('[Keepalive] Generated video blob:', blob.size, 'bytes, type:', selectedMime);
+            resolve(url);
+          } catch (e) {
+            reject(e);
+          }
+        };
+        
+        this.videoRecorder.onerror = (e) => {
+          reject(new Error('MediaRecorder error: ' + e.message));
+        };
+        
+        // Start recording
+        this.videoRecorder.start();
+        
+        // Draw frames during recording to ensure we have content
+        let framesDrawn = 0;
+        const maxFrames = 30; // Record ~3 seconds at 10fps
+        
+        const drawFrame = () => {
+          if (!this.videoRecorder || this.videoRecorder.state !== 'recording') return;
+          
+          // Draw alternating black/very-dark-gray frames
+          ctx.fillStyle = framesDrawn % 2 === 0 ? '#000000' : '#010101';
+          ctx.fillRect(0, 0, 4, 4);
+          
+          framesDrawn++;
+          
+          if (framesDrawn < maxFrames) {
+            requestAnimationFrame(drawFrame);
+          } else {
+            // Stop recording after enough frames
+            setTimeout(() => {
+              if (this.videoRecorder?.state === 'recording') {
+                this.videoRecorder.stop();
+              }
+            }, 100);
+          }
+        };
+        
+        drawFrame();
+        
+        // Timeout fallback
+        setTimeout(() => {
+          if (this.videoRecorder?.state === 'recording') {
+            this.videoRecorder.stop();
+          }
+        }, 5000);
+      });
+      
     } catch (e) {
-      console.warn('[Keepalive] Video keepalive failed:', e);
+      console.warn('[Keepalive] MediaRecorder generation failed:', e);
+      return null;
+    }
+  }
+
+  // FALLBACK 1: Minimal valid WebM data URI (generated via ffmpeg)
+  // ffmpeg -f lavfi -i "color=c=black:s=4x4:d=0.1" -pix_fmt yuv420p -c:v libvpx -an -b:v 1k -deadline realtime -cpu-used 8 -y tiny.webm
+  _getFallbackVideoUrl() {
+    // Real WebM file: 4x4 black frames, VP8, 100ms, 1kb bitrate, ~1KB total
+    const minimalWebM = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAAI5EU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHYTbuMU6uEElTDZ1OsggEiTbuMU6uEHFO7a1OsggIj7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsirXsYMPQkBNgI1MYXZmNTguNzguMTAwV0GNTGF2ZjU4Ljc4LjEwMESJiEBeAAAAAAAAFlSua8WuAQAAAAAAADzXgQFzxYhKmiDXz2N8TJyBACK1nIN1bmSGhVZfVlA4g4EBI+ODhAJiWgDgAQAAAAAAAAmwgQS6gQSagQISVMNnQJpzcwEAAAAAAAAnY8CAZ8gBAAAAAAAAGkWjh0VOQ09ERVJEh41MYXZmNTguNzguMTAwc3MBAAAAAAAAX2PAi2PFiEqaINfPY3xMZ8gBAAAAAAAAIkWjh0VOQ09ERVJEh5VMYXZjNTguMTM2LjEwMSBsaWJ2cHhnyKJFo4hEVVJBVElPTkSHlDAwOjAwOjAwLjEyMDAwMDAwMAAAH0O2ddzngQCjo4EAAIAQAgCdASoEAAQAAEcIhYWImYSIAgIADA1gAP7/q1CAo5iBACgAsQEADBGMABgAMD/0DAAAAP7s/gCjmIEAUACxAQAPEfwAGAAwP/QMAAAA/ua1ABxTu2uRu4+zgQC3iveBAfGCAcLwgQM=';
+    
+    return minimalWebM;
+  }
+
+  // FALLBACK 2: Generate a silent audio blob and use that (last resort)
+  async _generateSilentAudioFallback() {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return null;
+      
+      const ctx = new AudioContext();
+      const sampleRate = ctx.sampleRate;
+      const duration = 1.0; // 1 second
+      const frameCount = sampleRate * duration;
+      
+      // Create silent buffer
+      const buffer = ctx.createBuffer(1, frameCount, sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < frameCount; i++) {
+        data[i] = 0.001; // Near-silent
+      }
+      
+      // MediaRecorder can't record AudioBuffer directly, so we'd need
+      // to use OfflineAudioContext or connect to a destination
+      // For simplicity, we just return null and let other methods handle it
+      ctx.close();
+      return null;
+      
+    } catch (e) {
+      return null;
     }
   }
 
   _stopVideoKeepalive() {
+    // Stop and cleanup MediaRecorder
+    if (this.videoRecorder) {
+      if (this.videoRecorder.state === 'recording') {
+        this.videoRecorder.stop();
+      }
+      this.videoRecorder = null;
+    }
+    
+    // Stop stream tracks
+    if (this.videoRecorderStream) {
+      this.videoRecorderStream.getTracks().forEach(track => track.stop());
+      this.videoRecorderStream = null;
+    }
+    
+    // Cleanup canvas
+    if (this.videoRecorderCanvas) {
+      this.videoRecorderCanvas = null;
+    }
+    
+    // Cleanup blob URL
+    if (this.videoBlob) {
+      URL.revokeObjectURL(this.videoBlob);
+      this.videoBlob = null;
+    }
+    
+    // Stop and cleanup video element
     if (this.videoElement) {
       this.videoElement.pause();
+      if (this.videoElement.src && this.videoElement.src.startsWith('blob:')) {
+        URL.revokeObjectURL(this.videoElement.src);
+      }
       this.videoElement.src = '';
       this.videoElement.remove();
       this.videoElement = null;

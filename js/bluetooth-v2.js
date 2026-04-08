@@ -398,26 +398,6 @@ class PulsettoBluetoothV2 {
     return result;
   }
 
-  // Query device status
-  async queryStatus() {
-    if (!window.PulsettoProtocolV2) {
-      throw new Error('ProtocolV2 not loaded');
-    }
-
-    const packet = window.PulsettoProtocolV2.Commands.queryStatus();
-    return this.sendPacket(packet, { waitForAck: false });
-  }
-
-  // Query battery
-  async queryBattery() {
-    if (!window.PulsettoProtocolV2) {
-      throw new Error('ProtocolV2 not loaded');
-    }
-
-    const packet = window.PulsettoProtocolV2.Commands.queryBattery();
-    return this.sendPacket(packet, { waitForAck: false });
-  }
-
   // Full session start: intensity + duration + start
   async startSession(intensity, durationMinutes, mode = 'bilateral') {
     this.emit('sessionStarting', { intensity, duration: durationMinutes, mode, timestamp: Date.now() });
@@ -441,6 +421,76 @@ class PulsettoBluetoothV2 {
       mode,
       timestamp: Date.now()
     };
+  }
+
+  // ==================== v1 Compatibility Layer ====================
+
+  // Send single ASCII command (translates to binary packet)
+  async sendCommand(commandString, options = {}) {
+    // Parse ASCII command and translate to v2 binary
+    const packet = this._asciiToPacket(commandString);
+    if (!packet) {
+      throw new Error(`Unknown ASCII command: ${commandString}`);
+    }
+    return this.sendPacket(packet, { waitForAck: false });
+  }
+
+  // Send multiple ASCII commands with delays
+  async sendCommands(commandStrings, options = {}) {
+    const results = [];
+    for (const cmd of commandStrings) {
+      results.push(await this.sendCommand(cmd, options));
+      await new Promise(r => setTimeout(r, 150)); // Delay between packets
+    }
+    return results;
+  }
+
+  // Translate v1 ASCII commands to v2 binary packets
+  _asciiToPacket(commandString) {
+    const cmd = commandString.trim();
+
+    // Intensity commands: '1', '2', ..., '9'
+    if (/^[1-9]$/.test(cmd)) {
+      return window.PulsettoProtocolV2.Commands.setIntensity(parseInt(cmd));
+    }
+
+    // Channel/mode commands
+    switch (cmd) {
+      case 'D':  // Bilateral
+        return window.PulsettoProtocolV2.Commands.start('bilateral');
+      case 'A':  // Left
+        return window.PulsettoProtocolV2.Commands.start('left');
+      case 'C':  // Right
+        return window.PulsettoProtocolV2.Commands.start('right');
+      case 'B':  // Ramp
+        return window.PulsettoProtocolV2.Commands.start('ramp');
+      case '-':  // Stop
+      case 'E':  // Alternative stop
+        return window.PulsettoProtocolV2.Commands.stop();
+      case 'Q':  // Query battery
+        return window.PulsettoProtocolV2.Commands.queryBattery();
+      case 'u':  // Charging query (v1 uses 'u')
+      case 'U':
+        return window.PulsettoProtocolV2.Commands.queryBattery(); // v2 uses battery for status
+      default:
+        return null;
+    }
+  }
+
+  // v1 compatibility: queryCharging (v2 queries battery status which includes charging)
+  async queryCharging() {
+    // v2 doesn't have a separate charging query, battery packet includes status
+    return this.queryBattery();
+  }
+
+  // v1 compatibility: queryStatus (same as v2)
+  async queryStatus() {
+    if (!window.PulsettoProtocolV2) {
+      throw new Error('ProtocolV2 not loaded');
+    }
+
+    const packet = window.PulsettoProtocolV2.Commands.queryStatus();
+    return this.sendPacket(packet, { waitForAck: false });
   }
 
   // ==================== Notification Handling ====================

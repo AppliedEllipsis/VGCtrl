@@ -662,6 +662,11 @@ class PulsettoApp {
       this.ui.protocolIndicator.textContent = this.protocolVersion;
       this.ui.protocolIndicator.className = `protocol-indicator ${this.protocolVersion}`;
     }
+
+    // Sync auto-scroll button state
+    if (this.ui.btnAutoScroll) {
+      this.ui.btnAutoScroll.classList.toggle('active', this.autoScroll);
+    }
   }
 
   _updateChannelButtons() {

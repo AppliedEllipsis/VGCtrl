@@ -219,6 +219,14 @@ const PulsettoProtocolV2 = {
       );
     },
 
+    // Keepalive (uses queryBattery to keep connection alive)
+    keepalive() {
+      return PulsettoProtocolV2.Packet.build(
+        PulsettoProtocolV2.Packet.CMD_QUERY_STATUS,
+        []
+      );
+    },
+
     // Query firmware version
     queryFirmware() {
       return PulsettoProtocolV2.Packet.build(

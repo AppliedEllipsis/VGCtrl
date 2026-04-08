@@ -288,11 +288,9 @@ class PulsettoApp {
     });
     
     this.clock.on('backgrounded', () => {
-      this.log('App backgrounded - keepalive active', 'warning');
-      // Note: bgKeepalive handles this automatically
-      
-      // Send one stop command but keep session state
-      this._sendStopCommand();
+      this.log('App backgrounded - keepalive active, device continues', 'warning');
+      // Note: bgKeepalive prevents tab throttling, session continues
+      // Device keeps running - DO NOT send stop command
     });
     
     this.clock.on('foregrounded', () => {

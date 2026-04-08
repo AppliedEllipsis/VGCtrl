@@ -48,7 +48,6 @@ class BackgroundKeepalive {
     this._handleVisibilityChange = this._handleVisibilityChange.bind(this);
     this._handleBeforeUnload = this._handleBeforeUnload.bind(this);
     this._broadcastPing = this._broadcastPing.bind(this);
-    this._canvasLoop = this._canvasLoop.bind(this);
     this._messageChannelPing = this._messageChannelPing.bind(this);
   }
 

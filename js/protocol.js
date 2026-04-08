@@ -177,16 +177,18 @@ const PulsettoProtocol = {
     }
   },
 
-  // Mode definitions
+  // Mode definitions - UI labels only, not protocol features
+  // The device only understands: intensity (1-9) + channel (A/C/D/-)
+  // These are user-friendly presets for common use cases
   Modes: {
-    stress: { name: 'Stress Relief', duration: 10, strength: 8, breathing: false, autonomic: 'sympathetic' },
-    sleep: { name: 'Sleep', duration: 20, strength: 8, breathing: false, autonomic: 'parasympathetic' },
-    focus: { name: 'Focus', duration: 15, strength: 8, breathing: false, autonomic: 'sympathetic' },
-    pain: { name: 'Pain Relief', duration: 15, strength: 8, breathing: false, autonomic: 'both' },
-    calm: { name: 'Calm', duration: 10, strength: 8, breathing: true, autonomic: 'parasympathetic' },
-    headache: { name: 'Headache', duration: 12, strength: 8, breathing: false, autonomic: 'parasympathetic' },
-    nausea: { name: 'Nausea', duration: 10, strength: 8, breathing: false, autonomic: 'parasympathetic' },
-    meditation: { name: 'Meditation', duration: 15, strength: 8, breathing: true, autonomic: 'parasympathetic' }
+    stress: { name: 'Stress Relief', duration: 10, strength: 8, breathing: false },
+    sleep: { name: 'Sleep', duration: 20, strength: 8, breathing: false },
+    focus: { name: 'Focus', duration: 15, strength: 8, breathing: false },
+    pain: { name: 'Pain Relief', duration: 15, strength: 8, breathing: false },
+    calm: { name: 'Calm', duration: 10, strength: 8, breathing: true },
+    headache: { name: 'Headache', duration: 12, strength: 8, breathing: false },
+    nausea: { name: 'Nausea', duration: 10, strength: 8, breathing: false },
+    meditation: { name: 'Meditation', duration: 15, strength: 8, breathing: true }
   }
 };
 

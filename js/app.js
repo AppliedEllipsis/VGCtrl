@@ -7,8 +7,7 @@
 
 class PulsettoApp {
   constructor() {
-    // Core components - v1 ASCII is reliable, v2 binary is experimental
-    this.protocolVersion = 'v1'; // 'v1' = ASCII (reliable), 'v2' = binary packets (experimental)
+    // Core components - ASCII protocol (confirmed in official app v2.2.91)
     this.ble = new PulsettoBluetooth();
     this.clock = new SessionClock();
     this.modeEngine = null;
@@ -56,21 +55,15 @@ class PulsettoApp {
 
     this._updateUI();
 
-    this.log('Pulsetto Web Controller initialized', 'info');
+    this.log('Pulsetto Web Controller initialized (ASCII protocol)', 'info');
     this.log('Click "Scan for Device" to connect', 'info');
-
-    // Warn about v2 being experimental
-    if (this.protocolVersion === 'v2') {
-      this.log('⚠️ Protocol v2 is experimental. Switch to v1 (ASCII) if device does not respond.', 'warning');
-    }
+    this.log('Using ASCII protocol (verified with official app v2.2.91)', 'info');
   }
 
   _cacheDOM() {
     // Connection panel
     this.ui.btnScan = document.getElementById('btn-scan');
     this.ui.btnDisconnect = document.getElementById('btn-disconnect');
-    this.ui.protocolSelect = document.getElementById('protocol-select');
-    this.ui.protocolIndicator = document.getElementById('protocol-indicator');
     this.ui.deviceInfo = document.getElementById('device-info');
     this.ui.deviceName = document.getElementById('device-name');
     this.ui.deviceId = document.getElementById('device-id');
@@ -136,9 +129,6 @@ class PulsettoApp {
     this.ui.btnScan.addEventListener('click', () => this.scanAndConnect());
     this.ui.btnDisconnect.addEventListener('click', () => this.disconnect());
 
-    // Protocol selection (only when disconnected)
-    this.ui.protocolSelect.addEventListener('change', (e) => this.setProtocol(e.target.value));
-
     // Mode selection
     this.ui.modeSelect.addEventListener('change', (e) => this.selectMode(e.target.value));
     
@@ -182,13 +172,7 @@ class PulsettoApp {
       this.ui.btnScan.classList.add('hidden');
       this.ui.btnDisconnect.classList.remove('hidden');
 
-      // Show protocol indicator
-      if (this.ui.protocolIndicator) {
-        this.ui.protocolIndicator.textContent = this.protocolVersion;
-        this.ui.protocolIndicator.className = `protocol-indicator ${this.protocolVersion}`;
-      }
-
-      this.log(`Connected to ${name} (${this.protocolVersion})`, 'success');
+      this.log(`Connected to ${name}`, 'success');
       
       // Query status immediately
       this.ble.queryStatus();
@@ -223,21 +207,6 @@ class PulsettoApp {
     
     this.ble.on('commandSent', ({ command, bytes }) => {
       this.log(`→ ${command.replace('\n', '')}`, 'command', bytes);
-    });
-
-    // For v2 protocol: packet logging
-    this.ble.on('packetSent', ({ packet }) => {
-      const hex = packet.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
-      this.log(`↦ TX [${packet.length}]`, 'command', hex);
-    });
-
-    this.ble.on('packetReceived', ({ parsed, raw }) => {
-      const hex = raw.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
-      this.log(`↧ RX [${parsed.type || 'unknown'}]`, 'success', hex);
-    });
-
-    this.ble.on('debug', ({ message }) => {
-      this.log(`[DEBUG] ${message}`, 'info');
     });
 
     this.ble.on('error', ({ error }) => {
@@ -394,35 +363,6 @@ class PulsettoApp {
     });
 
     this.log(`Channel override: ${channel}`, 'info');
-  }
-
-  setProtocol(version) {
-    if (this.ble.isConnected) {
-      this.log('Disconnect to change protocol', 'warning');
-      // Revert dropdown to current protocol
-      this.ui.protocolSelect.value = this.protocolVersion;
-      return;
-    }
-
-    this.protocolVersion = version;
-
-    // Switch BLE manager
-    if (version === 'v2') {
-      this.ble = new PulsettoBluetoothV2();
-      this.log('Switched to Protocol v2 (binary packets)', 'info');
-    } else {
-      this.ble = new PulsettoBluetooth();
-      this.log('Switched to Protocol v1 (ASCII)', 'info');
-    }
-
-    // Re-bind BLE events for new manager
-    this._bindBLEEvents();
-
-    // Update indicator
-    if (this.ui.protocolIndicator) {
-      this.ui.protocolIndicator.textContent = version;
-      this.ui.protocolIndicator.className = `protocol-indicator ${version}`;
-    }
   }
 
   setTimerMinutes(minutes) {
@@ -665,12 +605,6 @@ class PulsettoApp {
     this._updateActionButtons();
     this._updateBreathingUI();
     this._updateChannelButtons();
-
-    // Update protocol indicator
-    if (this.ui.protocolIndicator) {
-      this.ui.protocolIndicator.textContent = this.protocolVersion;
-      this.ui.protocolIndicator.className = `protocol-indicator ${this.protocolVersion}`;
-    }
 
     // Sync auto-scroll button state
     if (this.ui.btnAutoScroll) {

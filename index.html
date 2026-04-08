@@ -45,22 +45,11 @@
     <main class="main">
       <!-- Connection Panel -->
       <section id="connection-panel" class="panel">
-        <!-- Protocol Selector -->
-        <div class="protocol-selector">
-          <label>BLE Protocol</label>
-          <select id="protocol-select">
-            <option value="v1" selected>v1: ASCII (Reliable)</option>
-            <option value="v2">v2: Binary (Experimental)</option>
-          </select>
-          <a href="js/PROTOCOL-V2-RESEARCH.md" target="_blank" class="protocol-help" title="Protocol documentation">?</a>
-        </div>
-
-        <button id="btn-scan" class="btn btn-primary">Scan for Device</button>
+          <button id="btn-scan" class="btn btn-primary">Scan for Device</button>
         <button id="btn-disconnect" class="btn btn-secondary hidden">Disconnect</button>
         <div id="device-info" class="device-info hidden">
           <span id="device-name">--</span>
           <span id="device-id" class="device-id">--</span>
-          <span id="protocol-indicator" class="protocol-indicator">v1</span>
         </div>
       </section>
 
@@ -172,15 +161,11 @@
     </footer>
   </div>
 
-  <!-- Protocol v1 (ASCII) -->
+  <!-- Protocol (ASCII - confirmed in official app v2.2.91) -->
   <script src="js/protocol.js"></script>
   <script src="js/bluetooth.js"></script>
 
-  <!-- Protocol v2 (Structured Binary Packets - from v2.2.91 APK) -->
-  <script src="js/protocol-v2.js"></script>
-  <script src="js/bluetooth-v2.js"></script>
-
-  <!-- Common -->
+  <!-- Session & UI -->
   <script src="js/session-clock.js"></script>
   <script src="js/background-keepalive.js"></script>
   <script src="js/mode-engines.js"></script>

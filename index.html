@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulsetto Web Controller</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <h1>Pulsetto</h1>
+      <div class="status-bar">
+        <span id="connection-status" class="status-dot disconnected"></span>
+        <span id="status-text">Disconnected</span>
+        <span id="battery-level" class="battery hidden">--%</span>
+        <span id="charging-indicator" class="charging hidden">⚡</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Connection Panel -->
+      <section id="connection-panel" class="panel">
+        <button id="btn-scan" class="btn btn-primary">Scan for Device</button>
+        <button id="btn-disconnect" class="btn btn-secondary hidden">Disconnect</button>
+        <div id="device-info" class="device-info hidden">
+          <span id="device-name">--</span>
+          <span id="device-id" class="device-id">--</span>
+        </div>
+      </section>
+
+      <!-- Session Controls -->
+      <section id="session-panel" class="panel">
+        <!-- Mode Selection -->
+        <div class="mode-selector">
+          <label>Mode</label>
+          <select id="mode-select" disabled>
+            <option value="stress">Stress Relief</option>
+            <option value="sleep">Sleep</option>
+            <option value="focus">Focus</option>
+            <option value="pain">Pain Relief</option>
+            <option value="calm">Calm</option>
+            <option value="sleep" selected>Sleep</option>
+            <option value="headache">Headache</option>
+            <option value="nausea">Nausea</option>
+            <option value="meditation">Meditation</option>
+          </select>
+        </div>
+
+        <!-- Timer -->
+        <div class="timer-section">
+          <div class="timer-display">
+            <button id="btn-timer-down" class="btn-icon" disabled>−</button>
+            <span id="timer-value" class="timer-value">10:00</span>
+            <button id="btn-timer-up" class="btn-icon" disabled>+</button>
+          </div>
+          <input type="range" id="timer-slider" min="1" max="60" value="10" disabled>
+        </div>
+
+        <!-- Intensity -->
+        <div class="intensity-section">
+          <label>Intensity <span id="intensity-value">5</span></label>
+          <input type="range" id="intensity-slider" min="1" max="9" value="5" disabled>
+          <div class="intensity-marks">
+            <span>1</span><span>5</span><span>9</span>
+          </div>
+        </div>
+
+        <!-- Breathing Guide (for respiratory-gated modes) -->
+        <div id="breathing-guide" class="breathing-guide hidden">
+          <div class="breathing-circle" id="breathing-circle"></div>
+          <div class="breathing-text" id="breathing-text">Inhale</div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button id="btn-start" class="btn btn-action btn-start" disabled>Start</button>
+          <button id="btn-pause" class="btn btn-action btn-pause hidden" disabled>Pause</button>
+          <button id="btn-resume" class="btn btn-action btn-resume hidden" disabled>Resume</button>
+          <button id="btn-stop" class="btn btn-action btn-stop hidden" disabled>Stop</button>
+        </div>
+
+        <!-- Session Progress -->
+        <div id="session-progress" class="session-progress hidden">
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+          </div>
+          <div class="progress-info">
+            <span id="elapsed-time">00:00</span>
+            <span id="remaining-time">10:00</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Logs -->
+      <section class="panel panel-logs">
+        <details>
+          <summary>Debug Logs</summary>
+          <div id="log-container" class="log-container"></div>
+          <button id="btn-clear-logs" class="btn btn-small">Clear</button>
+        </details>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div id="wake-lock-status" class="wake-lock-status hidden">
+        <span class="wake-indicator">☀</span> Screen Wake Active
+      </div>
+      <div id="visibility-status" class="visibility-status">
+        Visible
+      </div>
+    </footer>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/protocol.js"></script>
+  <script src="js/bluetooth.js"></script>
+  <script src="js/session-clock.js"></script>
+  <script src="js/mode-engines.js"></script>
+  <script src="js/app.js"></script>
+  
+  <script>
+    // Service Worker registration for PWA capabilities
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(console.error);
+    }
+  </script>
+</body>
+</html>

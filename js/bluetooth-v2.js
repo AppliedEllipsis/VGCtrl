@@ -32,6 +32,10 @@ class PulsettoBluetoothV2 {
     this.retryCount = 0;
     this.maxRetries = 3;
 
+    // GATT operation queue (Web Bluetooth requires serial GATT operations)
+    this._gattQueue = Promise.resolve();
+    this._gattQueueLock = false;
+
     // Configuration
     this.config = {
       protocolVersion: '2.0',

@@ -16,3 +16,4 @@
 {"id":"eb423f7e-0d74-4246-982a-d1eb45fc3b21","ts":"2026-04-08T22:16:58.245Z","severity":"info","message":"Reviewing prior context...","source":"notify","read":false}
 {"id":"399a9f2c-7c0c-41b2-87ea-5ba1b6e8283d","ts":"2026-04-08T22:16:58.247Z","severity":"success","message":"✓ Reviewed prior context","source":"notify","read":false}
 {"id":"71b2f6c3-a7cf-4163-a659-6905db06459a","ts":"2026-04-08T22:16:58.264Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}
+{"id":"e3cd3f49-c4e0-4498-9215-0dc8e53b55ce","ts":"2026-04-08T22:30:04.621Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}

@@ -499,6 +499,11 @@ class PulsettoBluetoothV2 {
     const value = event.target.value;
     const bytes = new Uint8Array(value.buffer);
 
+    // Debug: log raw notification data
+    const hexDebug = bytes.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    const asciiDebug = bytes.map(b => b >= 32 && b < 127 ? String.fromCharCode(b) : '.').join('');
+    this.emit('debug', { message: `RX raw: ${hexDebug} | ASCII: ${asciiDebug}`, timestamp: Date.now() });
+
     // Append to packet buffer (for handling fragmented packets)
     const newBuffer = new Uint8Array(this.packetBuffer.length + bytes.length);
     newBuffer.set(this.packetBuffer);
@@ -511,6 +516,10 @@ class PulsettoBluetoothV2 {
 
   _processPacketBuffer() {
     if (!window.PulsettoProtocolV2) return;
+
+    // Debug: log buffer state
+    const bufferHex = this.packetBuffer.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    this.emit('debug', { message: `Buffer: ${bufferHex} (${this.packetBuffer.length} bytes)`, timestamp: Date.now() });
 
     // Need at least header size to check
     const HEADER_SIZE = 4;
@@ -535,6 +544,7 @@ class PulsettoBluetoothV2 {
 
       if (this.packetBuffer.length < totalLen) {
         // Need more data
+        this.emit('debug', { message: `Need more data: have ${this.packetBuffer.length}, need ${totalLen}`, timestamp: Date.now() });
         return;
       }
 
@@ -542,8 +552,16 @@ class PulsettoBluetoothV2 {
       const packet = this.packetBuffer.slice(0, totalLen);
       this.packetBuffer = this.packetBuffer.slice(totalLen);
 
+      // Debug: log extracted packet
+      const packetHex = packet.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+      this.emit('debug', { message: `Packet extracted: ${packetHex}`, timestamp: Date.now() });
+
       // Parse using protocol
       const parsed = window.PulsettoProtocolV2.ResponseParser.parse(packet);
+
+      if (!parsed.valid) {
+        this.emit('debug', { message: `Parse error: ${parsed.error}`, timestamp: Date.now() });
+      }
 
       this._handleParsedResponse(parsed);
     }

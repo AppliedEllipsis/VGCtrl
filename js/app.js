@@ -231,6 +231,10 @@ class PulsettoApp {
       this.log(`↧ RX [${parsed.type || 'unknown'}]`, 'success', hex);
     });
 
+    this.ble.on('debug', ({ message }) => {
+      this.log(`[DEBUG] ${message}`, 'info');
+    });
+
     this.ble.on('error', ({ error }) => {
       this.log(`Error: ${error.message}`, 'error');
     });

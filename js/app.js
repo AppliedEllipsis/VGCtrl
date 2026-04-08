@@ -7,8 +7,9 @@
 
 class PulsettoApp {
   constructor() {
-    // Core components
-    this.ble = new PulsettoBluetooth();
+    // Core components - start with v2 (binary) as default
+    this.protocolVersion = 'v2'; // 'v1' = ASCII, 'v2' = binary packets
+    this.ble = new PulsettoBluetoothV2();
     this.clock = new SessionClock();
     this.modeEngine = null;
     
@@ -21,7 +22,11 @@ class PulsettoApp {
     this.activeChannel = ActiveChannel.OFF;
     this.breathingPhase = null;
     this.channelOverride = 'auto'; // 'auto', 'left', 'right', 'bilateral'
-    
+
+    // Logging state
+    this.autoScroll = true;
+    this.logsExpanded = false;
+
     // Timers
     this.keepaliveTimer = null;
     this.statusPollTimer = null;
@@ -59,6 +64,8 @@ class PulsettoApp {
     // Connection panel
     this.ui.btnScan = document.getElementById('btn-scan');
     this.ui.btnDisconnect = document.getElementById('btn-disconnect');
+    this.ui.protocolSelect = document.getElementById('protocol-select');
+    this.ui.protocolIndicator = document.getElementById('protocol-indicator');
     this.ui.deviceInfo = document.getElementById('device-info');
     this.ui.deviceName = document.getElementById('device-name');
     this.ui.deviceId = document.getElementById('device-id');
@@ -115,13 +122,18 @@ class PulsettoApp {
     // Logs
     this.ui.logContainer = document.getElementById('log-container');
     this.ui.btnClearLogs = document.getElementById('btn-clear-logs');
+    this.ui.btnAutoScroll = document.getElementById('btn-auto-scroll');
+    this.ui.btnExpandLogs = document.getElementById('btn-expand-logs');
   }
 
   _bindEvents() {
     // Connection
     this.ui.btnScan.addEventListener('click', () => this.scanAndConnect());
     this.ui.btnDisconnect.addEventListener('click', () => this.disconnect());
-    
+
+    // Protocol selection (only when disconnected)
+    this.ui.protocolSelect.addEventListener('change', (e) => this.setProtocol(e.target.value));
+
     // Mode selection
     this.ui.modeSelect.addEventListener('change', (e) => this.selectMode(e.target.value));
     
@@ -146,6 +158,11 @@ class PulsettoApp {
 
     // Logs
     this.ui.btnClearLogs.addEventListener('click', () => this.clearLogs());
+    this.ui.btnAutoScroll.addEventListener('click', () => this.toggleAutoScroll());
+    this.ui.btnExpandLogs.addEventListener('click', () => this.toggleLogExpansion());
+
+    // Track manual scrolling to disable auto-scroll when user scrolls up
+    this.ui.logContainer.addEventListener('scroll', () => this._onLogScroll());
   }
 
   _bindBLEEvents() {
@@ -159,7 +176,14 @@ class PulsettoApp {
       this.ui.deviceInfo.classList.remove('hidden');
       this.ui.btnScan.classList.add('hidden');
       this.ui.btnDisconnect.classList.remove('hidden');
-      this.log(`Connected to ${name}`, 'success');
+
+      // Show protocol indicator
+      if (this.ui.protocolIndicator) {
+        this.ui.protocolIndicator.textContent = this.protocolVersion;
+        this.ui.protocolIndicator.className = `protocol-indicator ${this.protocolVersion}`;
+      }
+
+      this.log(`Connected to ${name} (${this.protocolVersion})`, 'success');
       
       // Query status immediately
       this.ble.queryStatus();
@@ -192,10 +216,21 @@ class PulsettoApp {
       this._handleNotification(parsed);
     });
     
-    this.ble.on('commandSent', ({ command }) => {
-      this.log(`→ ${command.replace('\n', '')}`, 'command');
+    this.ble.on('commandSent', ({ command, bytes }) => {
+      this.log(`→ ${command.replace('\n', '')}`, 'command', bytes);
     });
-    
+
+    // For v2 protocol: packet logging
+    this.ble.on('packetSent', ({ packet }) => {
+      const hex = packet.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+      this.log(`↦ TX [${packet.length}]`, 'command', hex);
+    });
+
+    this.ble.on('packetReceived', ({ parsed, raw }) => {
+      const hex = raw.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+      this.log(`↧ RX [${parsed.type || 'unknown'}]`, 'success', hex);
+    });
+
     this.ble.on('error', ({ error }) => {
       this.log(`Error: ${error.message}`, 'error');
     });
@@ -350,6 +385,35 @@ class PulsettoApp {
     });
 
     this.log(`Channel override: ${channel}`, 'info');
+  }
+
+  setProtocol(version) {
+    if (this.ble.isConnected) {
+      this.log('Disconnect to change protocol', 'warning');
+      // Revert dropdown to current protocol
+      this.ui.protocolSelect.value = this.protocolVersion;
+      return;
+    }
+
+    this.protocolVersion = version;
+
+    // Switch BLE manager
+    if (version === 'v2') {
+      this.ble = new PulsettoBluetoothV2();
+      this.log('Switched to Protocol v2 (binary packets)', 'info');
+    } else {
+      this.ble = new PulsettoBluetooth();
+      this.log('Switched to Protocol v1 (ASCII)', 'info');
+    }
+
+    // Re-bind BLE events for new manager
+    this._bindBLEEvents();
+
+    // Update indicator
+    if (this.ui.protocolIndicator) {
+      this.ui.protocolIndicator.textContent = version;
+      this.ui.protocolIndicator.className = `protocol-indicator ${version}`;
+    }
   }
 
   setTimerMinutes(minutes) {
@@ -592,6 +656,12 @@ class PulsettoApp {
     this._updateActionButtons();
     this._updateBreathingUI();
     this._updateChannelButtons();
+
+    // Update protocol indicator
+    if (this.ui.protocolIndicator) {
+      this.ui.protocolIndicator.textContent = this.protocolVersion;
+      this.ui.protocolIndicator.className = `protocol-indicator ${this.protocolVersion}`;
+    }
   }
 
   _updateChannelButtons() {
@@ -710,17 +780,77 @@ class PulsettoApp {
   }
 
   // Logging
-  log(message, type = 'info') {
+  log(message, type = 'info', payload = null) {
     const time = new Date().toLocaleTimeString();
     const entry = document.createElement('div');
     entry.className = 'log-entry';
-    entry.innerHTML = `<span class="log-time">${time}</span><span class="log-${type}">${message}</span>`;
-    
+
+    let html = `<span class="log-time">${time}</span><span class="log-${type}">${message}</span>`;
+
+    // Add full payload if provided (for commands/packets)
+    if (payload !== null) {
+      const payloadStr = typeof payload === 'object' ? JSON.stringify(payload) : String(payload);
+      html += `<span class="log-payload">${payloadStr}</span>`;
+    }
+
+    entry.innerHTML = html;
     this.ui.logContainer.appendChild(entry);
-    this.ui.logContainer.scrollTop = this.ui.logContainer.scrollHeight;
-    
+
+    // Smart auto-scroll: only scroll if user is at bottom or auto-scroll is enabled
+    if (this._shouldAutoScroll()) {
+      this.ui.logContainer.scrollTop = this.ui.logContainer.scrollHeight;
+    }
+
     // Also log to console
-    console.log(`[${time}] ${message}`);
+    console.log(`[${time}] ${message}`, payload || '');
+  }
+
+  // Check if we should auto-scroll based on position and toggle state
+  _shouldAutoScroll() {
+    if (!this.autoScroll) return false;
+
+    const container = this.ui.logContainer;
+    const threshold = 50; // pixels from bottom to still consider "at bottom"
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+
+    return isAtBottom;
+  }
+
+  // Handle manual scroll to detect when user scrolls up
+  _onLogScroll() {
+    const container = this.ui.logContainer;
+    const threshold = 50;
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+
+    // If user manually scrolls up, disable auto-scroll
+    if (!isAtBottom && this.autoScroll) {
+      this.autoScroll = false;
+      this.ui.btnAutoScroll.classList.remove('active');
+    }
+  }
+
+  // Toggle auto-scroll on/off
+  toggleAutoScroll() {
+    this.autoScroll = !this.autoScroll;
+    this.ui.btnAutoScroll.classList.toggle('active', this.autoScroll);
+
+    if (this.autoScroll) {
+      // If turning on, scroll to bottom immediately
+      this.ui.logContainer.scrollTop = this.ui.logContainer.scrollHeight;
+    }
+
+    this.log(`Auto-scroll ${this.autoScroll ? 'enabled' : 'disabled'}`, 'info');
+  }
+
+  // Toggle log container expanded/collapsed height
+  toggleLogExpansion() {
+    this.logsExpanded = !this.logsExpanded;
+    this.ui.logContainer.classList.toggle('expanded', this.logsExpanded);
+    this.ui.btnExpandLogs.classList.toggle('active', this.logsExpanded);
+
+    if (this.autoScroll) {
+      this.ui.logContainer.scrollTop = this.ui.logContainer.scrollHeight;
+    }
   }
 
   clearLogs() {

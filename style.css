@@ -596,6 +596,55 @@ input[type="range"]:disabled {
 .log-error { color: var(--color-danger); }
 .log-command { color: var(--color-accent); }
 
+/* Log Toolbar */
+.log-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.log-toolbar .btn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.log-toolbar .btn:hover {
+  background: var(--color-surface-raised);
+}
+
+.log-toolbar .btn.active {
+  background: var(--color-primary);
+  color: var(--color-bg);
+  border-color: var(--color-primary);
+}
+
+/* Log container expanded state */
+.log-container.expanded {
+  max-height: 60vh;
+}
+
+/* Full payload display in logs */
+.log-entry .log-payload {
+  display: block;
+  margin-left: 60px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--color-surface-raised);
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  color: var(--color-accent);
+  word-break: break-all;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
 /* Footer */
 .footer {
   display: flex;

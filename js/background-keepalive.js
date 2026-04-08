@@ -44,7 +44,10 @@ class BackgroundKeepalive {
     this.videoRecorder = null;
     this.videoRecorderCanvas = null;
     this.videoRecorderStream = null;
-    
+    this.workerUrl = null;
+    this.noOpStyle = null;
+    this._pingInterval = null;
+
     this._handleVisibilityChange = this._handleVisibilityChange.bind(this);
     this._handleBeforeUnload = this._handleBeforeUnload.bind(this);
     this._broadcastPing = this._broadcastPing.bind(this);
@@ -77,9 +80,9 @@ class BackgroundKeepalive {
   stop() {
     if (!this.isRunning) return;
     this.isRunning = false;
-    
+
     console.log('[Keepalive] Stopping keepalive systems');
-    
+
     this._releaseWakeLock();
     this._stopWorker();
     this._stopSilentAudio();
@@ -89,10 +92,11 @@ class BackgroundKeepalive {
     this._stopCanvasLoop();
     this._stopVideoKeepalive();
     this._stopAggressivePinging();
-    
+    this._stopNotificationRefresh();
+
     document.removeEventListener('visibilitychange', this._handleVisibilityChange);
     window.removeEventListener('beforeunload', this._handleBeforeUnload);
-    
+
     if (this.notification) {
       this.notification.close();
       this.notification = null;
@@ -131,7 +135,7 @@ class BackgroundKeepalive {
       let intervalId = null;
       let lastTick = Date.now();
       let messageCount = 0;
-      
+
       self.onmessage = (e) => {
         if (e.data === 'start') {
           if (intervalId) clearInterval(intervalId);
@@ -150,10 +154,11 @@ class BackgroundKeepalive {
         }
       };
     `;
-    
+
     const blob = new Blob([workerCode], { type: 'application/javascript' });
-    this.worker = new Worker(URL.createObjectURL(blob));
-    
+    this.workerUrl = URL.createObjectURL(blob);
+    this.worker = new Worker(this.workerUrl);
+
     this.worker.onmessage = (e) => {
       if (e.data.type === 'tick') {
         if (e.data.drift > 200) {
@@ -162,7 +167,7 @@ class BackgroundKeepalive {
         this.onKeepaliveTick(e.data);
       }
     };
-    
+
     this.worker.postMessage('start');
   }
 
@@ -171,6 +176,10 @@ class BackgroundKeepalive {
       this.worker.postMessage('stop');
       this.worker.terminate();
       this.worker = null;
+    }
+    if (this.workerUrl) {
+      URL.revokeObjectURL(this.workerUrl);
+      this.workerUrl = null;
     }
   }
 
@@ -275,9 +284,9 @@ class BackgroundKeepalive {
       opacity: 0;
       pointer-events: none;
     `;
-    
-    const style = document.createElement('style');
-    style.textContent = `
+
+    this.noOpStyle = document.createElement('style');
+    this.noOpStyle.textContent = `
       @keyframes noop-keepalive {
         0% { transform: translateX(0); }
         100% { transform: translateX(1px); }
@@ -286,9 +295,9 @@ class BackgroundKeepalive {
         animation: noop-keepalive 0.5s linear infinite;
       }
     `;
-    document.head.appendChild(style);
+    document.head.appendChild(this.noOpStyle);
     this.noOpElement.className = 'keepalive-anim';
-    
+
     document.body.appendChild(this.noOpElement);
   }
 
@@ -296,6 +305,10 @@ class BackgroundKeepalive {
     if (this.noOpElement) {
       this.noOpElement.remove();
       this.noOpElement = null;
+    }
+    if (this.noOpStyle) {
+      this.noOpStyle.remove();
+      this.noOpStyle = null;
     }
   }
 
@@ -596,61 +609,75 @@ class BackgroundKeepalive {
     // Stop and cleanup MediaRecorder
     if (this.videoRecorder) {
       if (this.videoRecorder.state === 'recording') {
-        this.videoRecorder.stop();
+        try {
+          this.videoRecorder.stop();
+        } catch (e) {
+          // Ignore errors during cleanup
+        }
       }
+      // Remove event listeners to prevent memory leaks
+      this.videoRecorder.ondataavailable = null;
+      this.videoRecorder.onstop = null;
+      this.videoRecorder.onerror = null;
       this.videoRecorder = null;
     }
-    
+
     // Stop stream tracks
     if (this.videoRecorderStream) {
       this.videoRecorderStream.getTracks().forEach(track => track.stop());
       this.videoRecorderStream = null;
     }
-    
+
     // Cleanup canvas
     if (this.videoRecorderCanvas) {
+      // Clear the canvas to free GPU memory
+      const ctx = this.videoRecorderCanvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, this.videoRecorderCanvas.width, this.videoRecorderCanvas.height);
+      }
       this.videoRecorderCanvas = null;
     }
-    
-    // Cleanup blob URL
+
+    // Stop and cleanup video element FIRST (before revoking URLs)
+    if (this.videoElement) {
+      this.videoElement.pause();
+      this.videoElement.removeAttribute('src');
+      this.videoElement.load(); // Forces release of video resources
+      this.videoElement.remove();
+      this.videoElement = null;
+    }
+
+    // Cleanup blob URLs after video element is gone
     if (this.videoBlob) {
       URL.revokeObjectURL(this.videoBlob);
       this.videoBlob = null;
-    }
-    
-    // Stop and cleanup video element
-    if (this.videoElement) {
-      this.videoElement.pause();
-      if (this.videoElement.src && this.videoElement.src.startsWith('blob:')) {
-        URL.revokeObjectURL(this.videoElement.src);
-      }
-      this.videoElement.src = '';
-      this.videoElement.remove();
-      this.videoElement = null;
     }
   }
 
   // Aggressive pinging when tab is hidden
   _startAggressivePinging() {
+    // Don't create multiple intervals
+    if (this._pingInterval) return;
+
     if (document.hidden) {
       this._pingInterval = setInterval(() => {
         if (!this.isRunning) return;
-        
+
         if (this.worker) {
           this.worker.postMessage('ping');
         }
-        
+
         if (this.audioContext?.state === 'suspended') {
           this.audioContext.resume();
         }
-        
+
         if (!this.wakeLock && 'wakeLock' in navigator) {
           this._acquireWakeLock();
         }
-        
+
         this._broadcastPing();
         this._messageChannelPing();
-        
+
       }, 250);
     }
   }

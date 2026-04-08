@@ -22,3 +22,22 @@ Thumbs.db
 # Build outputs
 dist/
 build/
+
+# ── GSD baseline (auto-generated) ──
+.gsd-id
+.bg-shell/
+*~
+*.code-workspace
+.env
+.env.*
+!.env.example
+.next/
+__pycache__/
+*.pyc
+.venv/
+venv/
+target/
+vendor/
+coverage/
+.cache/
+tmp/

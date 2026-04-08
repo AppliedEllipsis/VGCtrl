@@ -20,6 +20,7 @@ class PulsettoApp {
     this.isStimulationActive = false;
     this.activeChannel = ActiveChannel.OFF;
     this.breathingPhase = null;
+    this.channelOverride = 'auto'; // 'auto', 'left', 'right', 'bilateral'
     
     // Timers
     this.keepaliveTimer = null;
@@ -76,6 +77,19 @@ class PulsettoApp {
     this.ui.btnTimerDown = document.getElementById('btn-timer-down');
     this.ui.intensitySlider = document.getElementById('intensity-slider');
     this.ui.intensityValue = document.getElementById('intensity-value');
+
+    // Mode description
+    this.ui.modeDescription = document.getElementById('mode-description');
+    this.ui.modeSummary = document.querySelector('#mode-description .mode-summary');
+    this.ui.modeChannel = document.getElementById('mode-channel');
+    this.ui.modePattern = document.getElementById('mode-pattern');
+    this.ui.modeTiming = document.getElementById('mode-timing');
+
+    // Channel override
+    this.ui.channelAuto = document.getElementById('channel-auto');
+    this.ui.channelLeft = document.getElementById('channel-left');
+    this.ui.channelRight = document.getElementById('channel-right');
+    this.ui.channelBoth = document.getElementById('channel-both');
     
     // Breathing guide
     this.ui.breathingGuide = document.getElementById('breathing-guide');
@@ -124,7 +138,12 @@ class PulsettoApp {
     this.ui.btnPause.addEventListener('click', () => this.pauseSession());
     this.ui.btnResume.addEventListener('click', () => this.resumeSession());
     this.ui.btnStop.addEventListener('click', () => this.stopSession());
-    
+
+    // Channel override
+    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+      btn?.addEventListener('click', (e) => this.setChannelOverride(e.target.dataset.channel));
+    });
+
     // Logs
     this.ui.btnClearLogs.addEventListener('click', () => this.clearLogs());
   }
@@ -310,19 +329,39 @@ class PulsettoApp {
   selectMode(mode) {
     this.selectedMode = mode;
     const modeConfig = PulsettoProtocol.Modes[mode];
-    
+    const description = ModeEngineFactory.getDescription(mode);
+
     if (modeConfig && !this.clock.isRunning && !this.clock.isPaused) {
       this.timerMinutes = modeConfig.duration;
       this.baseStrength = modeConfig.strength;
-      
+
       this.ui.timerSlider.value = this.timerMinutes;
       this.ui.intensitySlider.value = this.baseStrength;
       this.ui.intensityValue.textContent = this.baseStrength;
       this.ui.timerValue.textContent = SessionClock.formatTime(this.timerMinutes * 60);
     }
-    
+
+    // Update mode description display
+    if (this.ui.modeSummary) {
+      this.ui.modeSummary.textContent = description.summary;
+      this.ui.modeChannel.textContent = description.channel;
+      this.ui.modePattern.textContent = description.pattern;
+      this.ui.modeTiming.textContent = description.timing;
+    }
+
     this._updateBreathingUI();
-    this.log(`Mode selected: ${modeConfig?.name || mode}`, 'info');
+    this.log(`Mode selected: ${description.name}`, 'info');
+  }
+
+  setChannelOverride(channel) {
+    this.channelOverride = channel;
+
+    // Update button states
+    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+      if (btn) btn.classList.toggle('active', btn.dataset.channel === channel);
+    });
+
+    this.log(`Channel override: ${channel}`, 'info');
   }
 
   setTimerMinutes(minutes) {
@@ -358,9 +397,15 @@ class PulsettoApp {
     const duration = this.timerMinutes * 60;
     
     // Get initial commands
-    const initialCommands = this.modeEngine.start(this.baseStrength, duration);
+    let initialCommands = this.modeEngine.start(this.baseStrength, duration);
+
+    // Apply channel override if set
+    if (this.channelOverride !== 'auto') {
+      initialCommands = applyChannelOverride(initialCommands, this.channelOverride);
+    }
+
     this.log(`Commands to send: ${JSON.stringify(initialCommands)}`, 'info');
-    
+
     // Send activation commands
     if (initialCommands.length > 0) {
       try {
@@ -470,10 +515,16 @@ class PulsettoApp {
       this.clock.totalDuration,
       this.baseStrength
     );
-    
+
+    // Apply channel override if set
+    let commands = result.commands;
+    if (this.channelOverride !== 'auto' && commands.length > 0) {
+      commands = applyChannelOverride(commands, this.channelOverride);
+    }
+
     // Send commands
-    if (result.commands.length > 0 && this.ble.canSendCommands) {
-      this.ble.sendCommands(result.commands);
+    if (commands.length > 0 && this.ble.canSendCommands) {
+      this.ble.sendCommands(commands);
     }
     
     // Update state
@@ -488,14 +539,19 @@ class PulsettoApp {
 
   _resumeSessionOnDevice() {
     if (!this.modeEngine) return;
-    
+
     const elapsed = this.clock.elapsedSeconds;
-    const commands = this.modeEngine.reconnectCommands(
+    let commands = this.modeEngine.reconnectCommands(
       elapsed,
       this.clock.totalDuration,
       this.baseStrength
     );
-    
+
+    // Apply channel override if set
+    if (this.channelOverride !== 'auto') {
+      commands = applyChannelOverride(commands, this.channelOverride);
+    }
+
     if (commands.length > 0 && this.ble.canSendCommands) {
       this.ble.sendCommands(commands);
     }

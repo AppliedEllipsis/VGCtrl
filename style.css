@@ -288,7 +288,7 @@ body {
 
 /* Mode Selector */
 .mode-selector {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .mode-selector label {
@@ -296,6 +296,83 @@ body {
   font-size: 0.875rem;
   color: var(--color-text-muted);
   margin-bottom: 6px;
+}
+
+/* Mode Description */
+.mode-description {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.mode-summary {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.mode-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mode-detail {
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  background: var(--color-bg);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+}
+
+/* Channel Override */
+.channel-override {
+  margin-bottom: 20px;
+}
+
+.channel-override label {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+}
+
+.channel-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn-channel {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  flex: 1;
+  min-width: 80px;
+}
+
+.btn-channel:hover {
+  background: var(--color-border);
+  border-color: var(--color-text-muted);
+}
+
+.btn-channel.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.btn-channel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .mode-selector select {

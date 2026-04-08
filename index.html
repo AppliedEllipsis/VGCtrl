@@ -64,11 +64,31 @@
             <option value="focus">Focus</option>
             <option value="pain">Pain Relief</option>
             <option value="calm">Calm</option>
-            <option value="sleep" selected>Sleep</option>
             <option value="headache">Headache</option>
             <option value="nausea">Nausea</option>
             <option value="meditation">Meditation</option>
           </select>
+        </div>
+
+        <!-- Mode Description -->
+        <div id="mode-description" class="mode-description">
+          <p class="mode-summary">--</p>
+          <div class="mode-details">
+            <span class="mode-detail" id="mode-channel">--</span>
+            <span class="mode-detail" id="mode-pattern">--</span>
+            <span class="mode-detail" id="mode-timing">--</span>
+          </div>
+        </div>
+
+        <!-- Channel Override -->
+        <div class="channel-override">
+          <label>Channel Override</label>
+          <div class="channel-buttons">
+            <button id="channel-auto" class="btn-channel active" data-channel="auto">Auto (Mode)</button>
+            <button id="channel-left" class="btn-channel" data-channel="left">Left Only</button>
+            <button id="channel-right" class="btn-channel" data-channel="right">Right Only</button>
+            <button id="channel-both" class="btn-channel" data-channel="bilateral">Both</button>
+          </div>
         </div>
 
         <!-- Timer -->

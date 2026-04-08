@@ -446,6 +446,88 @@ class MeditationEngine extends RespiratoryGatedEngine {
   }
 }
 
+// Mode descriptions for UI
+const ModeDescriptions = {
+  stress: {
+    name: 'Stress Relief',
+    summary: 'Continuous bilateral stimulation for general relaxation and stress reduction.',
+    channel: 'Both ears',
+    pattern: 'Continuous',
+    timing: 'Full session duration'
+  },
+  sleep: {
+    name: 'Sleep',
+    summary: 'Rotating channels with gentle fade-out to ease you into sleep. Cycles through bilateral, left, bilateral, right, bilateral.',
+    channel: 'Rotating (Both → Left → Both → Right → Both)',
+    pattern: '5-phase rotation with fade',
+    timing: 'Last 20%: -1 intensity, then -2'
+  },
+  focus: {
+    name: 'Focus',
+    summary: 'Left-ear only stimulation with 30-second on/off cycles. Enhances concentration without overstimulation.',
+    channel: 'Left ear only',
+    pattern: '30s ON / 30s OFF duty cycle',
+    timing: 'Repeats throughout session'
+  },
+  pain: {
+    name: 'Pain Relief',
+    summary: 'Bilateral stimulation with gentle intensity waves (±1) on a 20-second cycle. Based on clinical protocols.',
+    channel: 'Both ears',
+    pattern: 'Sine wave oscillation ±1',
+    timing: '20-second wave period'
+  },
+  calm: {
+    name: 'Calm',
+    summary: 'Breathing-guided stimulation. Stimulation activates during late inhale and hold, pauses during exhale. Slow 3.5 breaths/min.',
+    channel: 'Both ears',
+    pattern: 'Respiratory-gated: inhale→ON, exhale→OFF',
+    timing: '5s inhale, 5s hold, 7s exhale'
+  },
+  headache: {
+    name: 'Headache',
+    summary: 'High-intensity burst cycling: 2 minutes stimulation followed by 30-second rest. Based on gammaCore migraine protocol.',
+    channel: 'Both ears',
+    pattern: 'Burst: 2min ON / 30s OFF',
+    timing: '2:30 cycle repeats'
+  },
+  nausea: {
+    name: 'Nausea',
+    summary: 'Continuous bilateral stimulation at moderate-high intensity. Based on gammaCore anti-nausea cervical protocol.',
+    channel: 'Both ears',
+    pattern: 'Continuous',
+    timing: 'Recommended: 5 minute sessions'
+  },
+  meditation: {
+    name: 'Meditation',
+    summary: 'Breathing-guided stimulation with faster cycle. Activates during inhale hold, supporting meditative state.',
+    channel: 'Both ears',
+    pattern: 'Respiratory-gated: inhale→ON, exhale→OFF',
+    timing: '5s inhale, 4s hold, 5s exhale'
+  }
+};
+
+// Channel override helper - applies manual channel selection to commands
+function applyChannelOverride(commands, overrideChannel) {
+  if (!overrideChannel || overrideChannel === 'auto') return commands;
+
+  // Map override to activation command
+  let activationCmd;
+  switch (overrideChannel) {
+    case 'left': activationCmd = PulsettoProtocol.Commands.activateLeft; break;
+    case 'right': activationCmd = PulsettoProtocol.Commands.activateRight; break;
+    case 'bilateral': activationCmd = PulsettoProtocol.Commands.activateBilateral; break;
+    default: return commands;
+  }
+
+  // Replace any activation commands (A, C, D) with the override
+  return commands.map(cmd => {
+    if (cmd === 'A\n' || cmd === 'C\n' || cmd === 'D\n') {
+      return activationCmd;
+    }
+    return cmd;
+  });
+}
+
 // Mode Engine Factory
 const ModeEngineFactory = {
   create(mode) {
@@ -460,6 +542,10 @@ const ModeEngineFactory = {
       case 'meditation': return new MeditationEngine();
       default: return new StressReliefEngine();
     }
+  },
+
+  getDescription(mode) {
+    return ModeDescriptions[mode] || ModeDescriptions.stress;
   }
 };
 
@@ -475,6 +561,8 @@ if (typeof window !== 'undefined') {
   window.NauseaEngine = NauseaEngine;
   window.MeditationEngine = MeditationEngine;
   window.ModeEngineFactory = ModeEngineFactory;
+  window.ModeDescriptions = ModeDescriptions;
+  window.applyChannelOverride = applyChannelOverride;
   window.ActiveChannel = ActiveChannel;
   window.BreathingPhase = BreathingPhase;
   window.ModeTickResult = ModeTickResult;

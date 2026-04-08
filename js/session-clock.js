@@ -272,8 +272,11 @@ class SessionClock {
 
     if (hidden && this.isRunning) {
       this.backgroundEntryTime = Date.now();
-      this._stopTickTimer();
-      
+      // NOTE: We intentionally do NOT stop the tick timer here.
+      // The background-keepalive system keeps the tab alive so that
+      // the mode engine continues sending commands to the device.
+      // Stopping the timer would pause stimulation, which is undesirable.
+
       this.emit('backgrounded', {
         remaining: this.remainingSeconds,
         timestamp: this.backgroundEntryTime
@@ -289,6 +292,7 @@ class SessionClock {
         timestamp: Date.now()
       });
 
+      // Timer was already running, but ensure it's active after visibility change
       this._startTickTimer();
 
       if (this.remainingSeconds <= 0) {

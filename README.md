@@ -61,17 +61,19 @@ A vanilla JavaScript single-page application (SPA) for controlling Pulsetto vagu
 
 ```
 pulsetto-web/
-├── index.html          # Main HTML structure
-├── style.css           # Dark theme styling
-├── manifest.json       # PWA manifest
-├── sw.js               # Service worker for offline/PWA
-├── icon.svg            # App icon
+├── index.html               # Main HTML structure
+├── style.css                # Dark theme styling
+├── manifest.json            # PWA manifest
+├── sw.js                    # Service worker for offline/PWA
+├── server.js                # HTTPS server with clickable terminal links
+├── icon.svg                 # App icon
 ├── js/
-│   ├── protocol.js     # BLE protocol definitions (ASCII)
-│   ├── bluetooth.js    # Web Bluetooth API wrapper
-│   ├── session-clock.js # Session timing with wall-clock tracking
-│   ├── mode-engines.js # Stimulation pattern generators
-│   └── app.js          # Main application logic
+│   ├── protocol.js          # BLE protocol definitions (ASCII)
+│   ├── bluetooth.js         # Web Bluetooth API wrapper
+│   ├── session-clock.js     # Session timing with wall-clock tracking
+│   ├── mode-engines.js      # Stimulation pattern generators
+│   ├── background-keepalive.js  # Anti-suspension keepalive techniques
+│   └── app.js               # Main application logic
 ```
 
 ## Usage
@@ -85,14 +87,23 @@ pulsetto-web/
 
 #### Option 1: Built-in HTTPS Server (Recommended)
 
-A Node.js server with auto-generated certificates and clickable terminal links:
+A Node.js server (`server.js`) with auto-generated certificates and clickable terminal links:
 
 ```bash
-# Using Node.js (server.js included)
+# Start server (default port 8443)
 node server.js
 
-# Or with custom port
+# Custom port (Unix/Mac)
 PORT=9000 node server.js
+
+# Custom port (Windows PowerShell)
+$env:PORT=9000; node server.js
+
+# Custom port (Windows CMD)
+set PORT=9000 && node server.js
+
+# Bind to specific IP
+HOST=192.168.1.5 node server.js
 ```
 
 The server will display clickable links like:
@@ -107,6 +118,19 @@ The server will display clickable links like:
 ```
 
 **Ctrl+Click** (or Cmd+Click on Mac) any URL to open directly.
+
+**Terminal Support for Clickable Links:**
+The server uses [OSC 8 escape sequences](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f48cb260b) to create clickable hyperlinks in supported terminals:
+| Terminal | Support |
+|----------|---------|
+| iTerm2 (Mac) | ✅ Cmd+Click |
+| Windows Terminal | ✅ Ctrl+Click |
+| VS Code Terminal | ✅ Ctrl/Cmd+Click |
+| GNOME Terminal | ✅ 3.26+ Ctrl+Click |
+| Konsole | ✅ Ctrl+Click |
+| Hyper | ✅ Ctrl/Cmd+Click |
+
+If your terminal doesn't support OSC 8, URLs are still visible and can be copied.
 
 #### Option 2: Python HTTP Server
 

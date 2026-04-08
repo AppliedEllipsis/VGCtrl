@@ -175,27 +175,33 @@ class BackgroundKeepalive {
   }
 
   // Silent Audio - prevents audio thread suspension
+  // Uses a 5 Hz oscillator (below human hearing, ~20 Hz threshold)
+  // with zero gain to keep audio context alive without any audible output
   _startSilentAudio() {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
-      
+
       this.audioContext = new AudioContext();
-      
+
       this.silentOscillator = this.audioContext.createOscillator();
       this.silentGain = this.audioContext.createGain();
-      
-      this.silentGain.gain.value = 0.001;
-      
+
+      // 5 Hz is below human hearing threshold (~20 Hz)
+      // This keeps the audio thread active without being audible
+      this.silentOscillator.frequency.value = 5;
+      // Zero gain = truly silent, but audio context still runs
+      this.silentGain.gain.value = 0;
+
       this.silentOscillator.connect(this.silentGain);
       this.silentGain.connect(this.audioContext.destination);
-      
+
       this.silentOscillator.start();
-      
+
       if (this.audioContext.state === 'suspended') {
         this.audioContext.resume();
       }
-      
+
       this._audioCheckInterval = setInterval(() => {
         if (this.audioContext?.state === 'suspended') {
           this.audioContext.resume();

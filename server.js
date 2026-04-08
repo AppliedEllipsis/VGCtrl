@@ -3,7 +3,35 @@
  * HTTPS Server for Pulsetto Web App
  * 
  * Serves the app with HTTPS (required for Web Bluetooth API)
- * Auto-detects local IP and shows clickable links
+ * Auto-detects local IP and shows clickable terminal links
+ * 
+ * Features:
+ * - Auto-generates self-signed HTTPS certificate
+ * - Detects all local network interfaces
+ * - Displays clickable URLs using OSC 8 terminal hyperlinks
+ * - SPA fallback for client-side routing
+ * - COOP/COEP headers for SharedArrayBuffer support
+ * 
+ * Usage:
+ *   node server.js                          # Default port 8443
+ *   PORT=9000 node server.js              # Custom port (Unix/Mac)
+ *   $env:PORT=9000; node server.js        # Custom port (PowerShell)
+ *   set PORT=9000 && node server.js       # Custom port (CMD)
+ *   HOST=192.168.1.5 node server.js         # Bind to specific IP
+ * 
+ * Terminal Clickable Links:
+ * This server uses OSC 8 escape sequences to create clickable links
+ * in supported terminal emulators:
+ * - iTerm2 (Mac)
+ * - Windows Terminal
+ * - VS Code integrated terminal
+ * - GNOME Terminal 3.26+
+ * - Konsole
+ * - Hyper
+ * 
+ * Ctrl+Click (Windows/Linux) or Cmd+Click (Mac) any URL to open.
+ * If your terminal doesn't support OSC 8, URLs are still visible
+ * and can be copied manually.
  */
 
 const https = require('https');
@@ -22,17 +50,64 @@ const GREEN = '\x1b[32m';
 const YELLOW = '\x1b[33m';
 const DIM = '\x1b[2m';
 
+// Check if openssl is available
+function hasOpenSSL() {
+  const { execSync } = require('child_process');
+  try {
+    execSync('openssl version', { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Generate self-signed certificate if not exists
 function generateCert() {
+  if (fs.existsSync('cert.pem') && fs.existsSync('key.pem')) {
+    return; // Already have certs
+  }
+
   const { execSync } = require('child_process');
+  const platform = process.platform;
+  
+  if (!hasOpenSSL()) {
+    console.error('\n❌ OpenSSL not found!');
+    console.log('\nTo generate certificates, install OpenSSL:');
+    console.log('  Windows:  Download from https://slproweb.com/products/Win32OpenSSL.html');
+    console.log('            or install Git for Windows (includes OpenSSL)');
+    console.log('  Mac:      brew install openssl');
+    console.log('  Linux:    sudo apt-get install openssl  (or equivalent)\n');
+    console.log('Alternatively, use one of these options:\n');
+    console.log('  1. Use a pre-existing cert/key pair (place cert.pem and key.pem in this folder)');
+    console.log('  2. Use mkcert:  npx mkcert create-cert --validity 365');
+    console.log('  3. Use ngrok for a public HTTPS URL:  npx ngrok http 8080');
+    console.log('  4. Use http-server with auto-generated certs:  npx http-server -S\n');
+    process.exit(1);
+  }
   
   try {
-    if (!fs.existsSync('cert.pem') || !fs.existsSync('key.pem')) {
-      console.log('Generating self-signed certificate...');
-      execSync('openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost" 2>/dev/null', { stdio: 'inherit' });
+    console.log('Generating self-signed certificate...');
+    
+    if (platform === 'win32') {
+      // Windows: Use set to handle the null device differently
+      execSync('openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"', { 
+        stdio: 'inherit',
+        windowsHide: true 
+      });
+    } else {
+      // Unix/Mac
+      execSync('openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost" 2>/dev/null', { 
+        stdio: 'inherit' 
+      });
     }
+    
+    console.log('✓ Certificates generated: cert.pem, key.pem\n');
   } catch (e) {
-    console.error('Failed to generate certificate:', e.message);
+    console.error('\n❌ Failed to generate certificate:', e.message);
+    console.log('\nTry one of these alternatives:\n');
+    console.log('  1. Use mkcert:  npx mkcert create-cert --validity 365');
+    console.log('  2. Use ngrok:   npx ngrok http 8080');
+    console.log('  3. Place existing cert.pem and key.pem in this folder\n');
     process.exit(1);
   }
 }

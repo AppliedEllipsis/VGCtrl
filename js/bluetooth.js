@@ -378,13 +378,9 @@ class PulsettoBluetooth {
     });
 
     // When tab becomes hidden, note that we were connected
+    // Keepalive system handles background silently - no warning needed
     if (hidden && this.isConnected) {
       this.wasConnectedBeforeHidden = true;
-      // Send immediate disconnect warning
-      this.emit('backgroundWarning', { 
-        message: '⚠️ Tab hidden - Bluetooth may disconnect. Keep tab visible for continuous stimulation.',
-        timestamp: Date.now()
-      });
     }
     
     // When tab becomes visible again, attempt reconnection if we were connected before

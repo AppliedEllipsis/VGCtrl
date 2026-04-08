@@ -106,31 +106,17 @@ self.addEventListener('periodicsync', (event) => {
   }
 });
 
-// Push notifications
+// Push notifications - disabled to avoid user annoyance
+// If re-enabled, use silent notifications only
 self.addEventListener('push', (event) => {
-  const data = event.data?.json() || {};
-  
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Pulsetto', {
-      body: data.body || 'Session active - keep tab visible',
-      icon: '/icon.svg',
-      badge: '/icon.svg',
-      tag: data.tag || 'pulsetto-keepalive',
-      requireInteraction: true,
-      silent: true,
-      data: { type: 'keepalive', ...data.payload }
-    })
-  );
+  // Silently ignore push notifications
+  // The keepalive system handles background operation without notifications
+  console.log('[SW] Push received - ignored (silent operation mode)');
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  
-  event.waitUntil(
-    clients.openWindow('/').then((windowClient) => {
-      if (windowClient) windowClient.focus();
-    })
-  );
+  event.waitUntil(clients.openWindow('/'));
 });
 
 // Message handling from main thread

@@ -83,17 +83,53 @@ pulsetto-web/
 
 ### Running Locally
 
-1. Serve the files over HTTPS (Web Bluetooth requires secure context):
+#### Option 1: Built-in HTTPS Server (Recommended)
+
+A Node.js server with auto-generated certificates and clickable terminal links:
 
 ```bash
-# Using Python 3
-python -m http.server 8443 --bind 127.0.0.1
+# Using Node.js (server.js included)
+node server.js
 
-# Using Node.js (http-server)
-npx http-server -p 8443 -S -C cert.pem -K key.pem
+# Or with custom port
+PORT=9000 node server.js
 ```
 
-2. Open `https://localhost:8443` in Chrome/Edge
+The server will display clickable links like:
+```
+📍 Localhost (this computer):
+   https://127.0.0.1:8443/
+   https://localhost:8443/
+
+🌐 Network (other devices on same WiFi):
+   https://192.168.1.100:8443/  (WiFi)
+   https://10.0.0.15:8443/      (Ethernet)
+```
+
+**Ctrl+Click** (or Cmd+Click on Mac) any URL to open directly.
+
+#### Option 2: Python HTTP Server
+
+```bash
+# Using Python 3 (HTTP only - Web Bluetooth won't work)
+python -m http.server 8443
+
+# For HTTPS with Python, use a reverse proxy or:
+python -m http.server 8443 &
+# Then use ngrok or similar for HTTPS tunnel
+```
+
+#### Option 3: External Tool
+
+```bash
+# Using Node.js http-server package
+npx http-server -p 8443 -S -C cert.pem -K key.pem
+
+# Using ngrok for public HTTPS URL
+npx ngrok http 8080
+```
+
+2. Open the URL in Chrome/Edge (HTTPS required for Web Bluetooth)
 
 3. Click "Scan for Device" and select your Pulsetto device
 

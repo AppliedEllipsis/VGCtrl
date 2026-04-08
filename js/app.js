@@ -7,9 +7,9 @@
 
 class PulsettoApp {
   constructor() {
-    // Core components - start with v2 (binary) as default
-    this.protocolVersion = 'v2'; // 'v1' = ASCII, 'v2' = binary packets
-    this.ble = new PulsettoBluetoothV2();
+    // Core components - v1 ASCII is reliable, v2 binary is experimental
+    this.protocolVersion = 'v1'; // 'v1' = ASCII (reliable), 'v2' = binary packets (experimental)
+    this.ble = new PulsettoBluetooth();
     this.clock = new SessionClock();
     this.modeEngine = null;
     
@@ -49,15 +49,20 @@ class PulsettoApp {
     this._bindEvents();
     this._bindBLEEvents();
     this._bindClockEvents();
-    
+
     // Set initial mode from HTML default (Sleep)
     const defaultMode = this.ui.modeSelect.value;
     this.selectMode(defaultMode);
-    
+
     this._updateUI();
-    
+
     this.log('Pulsetto Web Controller initialized', 'info');
     this.log('Click "Scan for Device" to connect', 'info');
+
+    // Warn about v2 being experimental
+    if (this.protocolVersion === 'v2') {
+      this.log('⚠️ Protocol v2 is experimental. Switch to v1 (ASCII) if device does not respond.', 'warning');
+    }
   }
 
   _cacheDOM() {

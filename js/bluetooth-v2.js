@@ -430,8 +430,11 @@ class PulsettoBluetoothV2 {
     // Parse ASCII command and translate to v2 binary
     const packet = this._asciiToPacket(commandString);
     if (!packet) {
+      this.emit('debug', { message: `No v2 translation for: ${JSON.stringify(commandString)}`, timestamp: Date.now() });
       throw new Error(`Unknown ASCII command: ${commandString}`);
     }
+    const hex = packet.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+    this.emit('debug', { message: `Translating ${JSON.stringify(commandString)} → ${hex}`, timestamp: Date.now() });
     return this.sendPacket(packet, { waitForAck: false });
   }
 

@@ -11,15 +11,9 @@
   "id": "/",
   "icons": [
     {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ],
@@ -28,20 +22,18 @@
   "dir": "ltr",
   "shortcuts": [
     {
-      "name": "Quick Start",
-      "short_name": "Start",
+      "name": "Quick Start - Sleep",
+      "short_name": "Sleep",
+      "description": "Start a 20-minute Sleep session",
+      "url": "/?mode=sleep",
+      "icons": [{ "src": "icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Quick Start - Calm",
+      "short_name": "Calm",
       "description": "Start a 10-minute Calm session",
-      "url": "/?action=start",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "url": "/?mode=calm",
+      "icons": [{ "src": "icon.svg", "sizes": "any" }]
     }
-  ],
-  "share_target": {
-    "action": "/",
-    "method": "POST",
-    "enctype": "multipart/form-data",
-    "params": {
-      "title": "name",
-      "text": "description"
-    }
-  }
+  ]
 }

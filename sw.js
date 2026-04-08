@@ -2,9 +2,10 @@
  * Pulsetto Web Controller Service Worker
  * 
  * Provides offline capability and background handling for PWA.
+ * Enhanced with keepalive support for Web Bluetooth connections.
  */
 
-const CACHE_NAME = 'pulsetto-v1';
+const CACHE_NAME = 'pulsetto-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -12,11 +13,11 @@ const STATIC_ASSETS = [
   '/js/protocol.js',
   '/js/bluetooth.js',
   '/js/session-clock.js',
+  '/js/background-keepalive.js',
   '/js/mode-engines.js',
   '/js/app.js',
   '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  '/icon.svg'
 ];
 
 // Install: Cache static assets
@@ -47,12 +48,8 @@ self.addEventListener('activate', (event) => {
 
 // Fetch: Serve from cache or network
 self.addEventListener('fetch', (event) => {
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
-    return;
-  }
+  if (event.request.method !== 'GET') return;
   
-  // Skip browser extensions
   if (event.request.url.startsWith('chrome-extension://') ||
       event.request.url.startsWith('moz-extension://')) {
     return;
@@ -61,7 +58,6 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) {
-        // Return cached and fetch update in background
         fetch(event.request)
           .then((response) => {
             if (response.ok) {
@@ -75,7 +71,6 @@ self.addEventListener('fetch', (event) => {
         return cached;
       }
       
-      // Not in cache, fetch from network
       return fetch(event.request)
         .then((response) => {
           if (!response || response.status !== 200 || response.type !== 'basic') {
@@ -97,32 +92,33 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Background sync for session state (when supported)
+// Background sync
 self.addEventListener('sync', (event) => {
   if (event.tag === 'session-sync') {
     event.waitUntil(syncSessionState());
   }
 });
 
-// Period background sync (for keepalive - Chrome only)
+// Periodic background sync - for keepalive
 self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'keepalive') {
     event.waitUntil(handlePeriodicSync());
   }
 });
 
-// Push notifications (for session alerts)
+// Push notifications
 self.addEventListener('push', (event) => {
   const data = event.data?.json() || {};
   
   event.waitUntil(
     self.registration.showNotification(data.title || 'Pulsetto', {
-      body: data.body || 'Session update',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: data.tag || 'pulsetto',
-      requireInteraction: data.requireInteraction || false,
-      data: data.payload || {}
+      body: data.body || 'Session active - keep tab visible',
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      tag: data.tag || 'pulsetto-keepalive',
+      requireInteraction: true,
+      silent: true,
+      data: { type: 'keepalive', ...data.payload }
     })
   );
 });
@@ -132,31 +128,55 @@ self.addEventListener('notificationclick', (event) => {
   
   event.waitUntil(
     clients.openWindow('/').then((windowClient) => {
-      if (windowClient) {
-        windowClient.focus();
-      }
+      if (windowClient) windowClient.focus();
     })
   );
 });
 
 // Message handling from main thread
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') {
+  const { type } = event.data || {};
+  
+  if (type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
   
-  if (event.data?.type === 'PING') {
+  if (type === 'PING') {
     event.ports[0]?.postMessage({ type: 'PONG', timestamp: Date.now() });
+  }
+  
+  if (type === 'KEEPALIVE_START') {
+    // Main thread is starting keepalive
+    console.log('[SW] Keepalive started');
+  }
+  
+  if (type === 'KEEPALIVE_TICK') {
+    // Received tick from main thread - keep SW alive
+    broadcastToClients({ type: 'SW_ALIVE', timestamp: Date.now() });
   }
 });
 
+// Broadcast to all clients
+function broadcastToClients(message) {
+  self.clients.matchAll({ type: 'window' }).then((clients) => {
+    clients.forEach((client) => {
+      client.postMessage(message);
+    });
+  });
+}
+
 async function syncSessionState() {
-  // Placeholder for session state sync
-  console.log('Background sync triggered');
+  console.log('[SW] Background sync triggered');
 }
 
 async function handlePeriodicSync() {
-  // Placeholder for periodic background sync
-  // This could be used for keepalive in future Chrome versions
-  console.log('Periodic sync triggered');
+  // Periodic sync - wake up to keep connection alive
+  console.log('[SW] Periodic sync triggered');
+  
+  // Notify all clients to check connection
+  broadcastToClients({ 
+    type: 'PERIODIC_SYNC', 
+    timestamp: Date.now(),
+    message: 'Keepalive check from service worker'
+  });
 }

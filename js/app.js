@@ -14,7 +14,7 @@ class PulsettoApp {
     
     // State
     this.selectedMode = 'calm';
-    this.baseStrength = 5;
+    this.baseStrength = 8;
     this.timerMinutes = 10;
     this.effectiveStrength = null;
     this.isStimulationActive = false;
@@ -25,6 +25,12 @@ class PulsettoApp {
     this.keepaliveTimer = null;
     this.statusPollTimer = null;
     this.breathingUpdateTimer = null;
+    
+    // Background keepalive system
+    this.bgKeepalive = new BackgroundKeepalive({
+      onKeepaliveTick: (data) => this._onBackgroundTick(data),
+      onWarn: (msg) => this.log(msg, 'warning')
+    });
     
     // DOM references
     this.ui = {};
@@ -178,6 +184,21 @@ class PulsettoApp {
     this.ble.on('visibilityChange', ({ hidden }) => {
       this.ui.visibilityStatus.textContent = hidden ? 'Background' : 'Visible';
       this.ui.visibilityStatus.classList.toggle('hidden-state', hidden);
+      
+      // Remove warning banner when visible again
+      if (!hidden) {
+        const banner = document.getElementById('background-warning');
+        if (banner) banner.remove();
+      }
+    });
+    
+    this.ble.on('backgroundWarning', ({ message }) => {
+      this.log(message, 'warning');
+      this._showBackgroundWarning();
+    });
+    
+    this.ble.on('reconnectAfterVisibility', ({ message }) => {
+      this.log(message, 'info');
     });
   }
 
@@ -185,6 +206,7 @@ class PulsettoApp {
     this.clock.on('started', ({ duration }) => {
       this.log(`Session started: ${SessionClock.formatTime(duration)}`, 'success');
       this._startKeepalive();
+      this.bgKeepalive.start(); // Start background keepalive prevention
       this._updateActionButtons();
     });
     
@@ -203,6 +225,7 @@ class PulsettoApp {
     this.clock.on('paused', () => {
       this.log('Session paused', 'warning');
       this._stopKeepalive();
+      this.bgKeepalive.stop();
       
       // Deactivate device
       this._sendStopCommand();
@@ -213,6 +236,7 @@ class PulsettoApp {
     this.clock.on('resumed', () => {
       this.log('Session resumed', 'success');
       this._startKeepalive();
+      this.bgKeepalive.start();
       
       // Resume on device
       this._resumeSessionOnDevice();
@@ -223,6 +247,7 @@ class PulsettoApp {
       this.log('Session stopped', 'info');
       this._stopKeepalive();
       this._stopStatusPoll();
+      this.bgKeepalive.stop();
       
       // Deactivate device
       this._sendStopCommand();
@@ -234,6 +259,7 @@ class PulsettoApp {
     this.clock.on('completed', () => {
       this.log('Session completed!', 'success');
       this._stopKeepalive();
+      this.bgKeepalive.stop();
       
       // Deactivate device
       this._sendStopCommand();
@@ -243,12 +269,11 @@ class PulsettoApp {
     });
     
     this.clock.on('backgrounded', () => {
-      this.log('App backgrounded - pausing timers', 'warning');
+      this.log('App backgrounded - keepalive active', 'warning');
+      // Note: bgKeepalive handles this automatically
       
-      // Deactivate device before background
+      // Send one stop command but keep session state
       this._sendStopCommand();
-      
-      this._stopKeepalive();
     });
     
     this.clock.on('foregrounded', () => {
@@ -387,6 +412,54 @@ class PulsettoApp {
       } catch (err2) {
         this.log(`Both stop commands failed: ${err2.message}`, 'error');
       }
+    }
+  }
+
+  // Show background warning to user
+  _showBackgroundWarning() {
+    // Create visual banner warning
+    let banner = document.getElementById('background-warning');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'background-warning';
+      banner.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: #ff9800;
+        color: #000;
+        padding: 12px;
+        text-align: center;
+        font-weight: bold;
+        z-index: 10000;
+        animation: pulse-warning 2s infinite;
+      `;
+      banner.innerHTML = '⚠️ Keep this tab visible to maintain device connection';
+      document.body.appendChild(banner);
+      
+      // Add animation style
+      const style = document.createElement('style');
+      style.textContent = `
+        @keyframes pulse-warning {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  // Handle background keepalive ticks from Web Worker
+  _onBackgroundTick(data) {
+    // If drift is high, we might be throttled - warn user
+    if (data.drift > 500) {
+      this.log('⚠️ Timer throttled - keep tab visible for best results', 'warning');
+    }
+    
+    // Ensure audio context stays alive (prevents suspension)
+    if (this.bgKeepalive.audioContext?.state === 'suspended') {
+      this.bgKeepalive.audioContext.resume();
     }
   }
 

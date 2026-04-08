@@ -179,14 +179,14 @@ const PulsettoProtocol = {
 
   // Mode definitions
   Modes: {
-    stress: { name: 'Stress Relief', duration: 10, strength: 5, breathing: false, autonomic: 'sympathetic' },
+    stress: { name: 'Stress Relief', duration: 10, strength: 8, breathing: false, autonomic: 'sympathetic' },
     sleep: { name: 'Sleep', duration: 20, strength: 8, breathing: false, autonomic: 'parasympathetic' },
-    focus: { name: 'Focus', duration: 15, strength: 4, breathing: false, autonomic: 'sympathetic' },
-    pain: { name: 'Pain Relief', duration: 15, strength: 6, breathing: false, autonomic: 'both' },
-    calm: { name: 'Calm', duration: 10, strength: 5, breathing: true, autonomic: 'parasympathetic' },
-    headache: { name: 'Headache', duration: 12, strength: 4, breathing: false, autonomic: 'parasympathetic' },
-    nausea: { name: 'Nausea', duration: 10, strength: 5, breathing: false, autonomic: 'parasympathetic' },
-    meditation: { name: 'Meditation', duration: 15, strength: 3, breathing: true, autonomic: 'parasympathetic' }
+    focus: { name: 'Focus', duration: 15, strength: 8, breathing: false, autonomic: 'sympathetic' },
+    pain: { name: 'Pain Relief', duration: 15, strength: 8, breathing: false, autonomic: 'both' },
+    calm: { name: 'Calm', duration: 10, strength: 8, breathing: true, autonomic: 'parasympathetic' },
+    headache: { name: 'Headache', duration: 12, strength: 8, breathing: false, autonomic: 'parasympathetic' },
+    nausea: { name: 'Nausea', duration: 10, strength: 8, breathing: false, autonomic: 'parasympathetic' },
+    meditation: { name: 'Meditation', duration: 15, strength: 8, breathing: true, autonomic: 'parasympathetic' }
   }
 };
 

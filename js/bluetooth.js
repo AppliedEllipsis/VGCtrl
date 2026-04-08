@@ -2,7 +2,7 @@
  * Pulsetto Bluetooth Manager
  * 
  * Manages Web Bluetooth connection using ASCII protocol.
- * Commands are sent as ASCII strings with newline terminator.
+ * Enhanced for background stability with reconnection support.
  */
 
 class PulsettoBluetooth {
@@ -19,17 +19,27 @@ class PulsettoBluetooth {
     this.reconnectTimer = null;
     this.pendingPromises = new Map();
     this.transactionId = 0;
+    this.wasConnectedBeforeHidden = false;
+    this._isManualDisconnect = false;
     
     // Text encoder for ASCII commands
     this.encoder = new TextEncoder();
+    
+    // Last known state for reconnection
+    this.lastDeviceId = null;
+    this.lastDeviceName = null;
     
     // Bind event handlers
     this._onDisconnect = this._onDisconnect.bind(this);
     this._onNotification = this._onNotification.bind(this);
     this._handleVisibilityChange = this._handleVisibilityChange.bind(this);
+    this._keepConnectionAlive = this._keepConnectionAlive.bind(this);
     
     // Listen for page visibility changes
     document.addEventListener('visibilitychange', this._handleVisibilityChange);
+    
+    // Start keepalive interval (pings connection every 4 seconds to prevent timeout)
+    setInterval(this._keepConnectionAlive, 4000);
   }
 
   // Event handling
@@ -73,6 +83,7 @@ class PulsettoBluetooth {
     try {
       this._setState('scanning');
       this.emit('scanning', { timestamp: Date.now() });
+      this._isManualDisconnect = false;
 
       this.device = await navigator.bluetooth.requestDevice({
         filters: [{ namePrefix: PulsettoProtocol.UUID.deviceNamePrefix }],
@@ -121,6 +132,11 @@ class PulsettoBluetooth {
 
       this._setState('ready');
       this.reconnectAttempts = 0;
+      
+      // Store device info for potential reconnection
+      this.lastDeviceId = this.device.id;
+      this.lastDeviceName = this.device.name;
+      
       this.emit('connected', { 
         name: this.device.name,
         id: this.device.id,
@@ -136,6 +152,7 @@ class PulsettoBluetooth {
 
   // Disconnect
   async disconnect() {
+    this._isManualDisconnect = true;
     this._cancelReconnect();
     
     if (this.txCharacteristic) {
@@ -157,7 +174,10 @@ class PulsettoBluetooth {
 
     this._resetState();
     this._setState('disconnected');
-    this.emit('disconnected', { timestamp: Date.now() });
+    this.emit('disconnected', { 
+      manual: true,
+      timestamp: Date.now() 
+    });
   }
 
   // Reset internal state
@@ -174,6 +194,21 @@ class PulsettoBluetooth {
     const oldState = this.connectionState;
     this.connectionState = newState;
     this.emit('stateChange', { oldState, newState, timestamp: Date.now() });
+  }
+
+  // Keep connection alive by querying status periodically
+  async _keepConnectionAlive() {
+    if (!this.isConnected) return;
+    
+    try {
+      // Send a gentle ping (query battery)
+      // This prevents the connection from timing out due to inactivity
+      const data = this.encoder.encode(PulsettoProtocol.Commands.queryBattery);
+      await this.rxCharacteristic.writeValue(data);
+    } catch (e) {
+      // If ping fails, connection is likely dead
+      console.warn('[BLE] Keepalive ping failed:', e);
+    }
   }
 
   // Send ASCII command to device
@@ -272,15 +307,20 @@ class PulsettoBluetooth {
   _onDisconnect(event) {
     this._resetState();
     
+    const wasManual = this._isManualDisconnect;
+    this._isManualDisconnect = false;
+    
     if (this.connectionState !== 'disconnecting') {
       this._setState('disconnected');
       this.emit('disconnected', { 
-        unexpected: true,
+        unexpected: !wasManual,
         timestamp: Date.now() 
       });
 
-      // Attempt reconnect if configured
-      this._scheduleReconnect();
+      // Only auto-reconnect if it wasn't a manual disconnect and tab is visible
+      if (!wasManual && !document.hidden) {
+        this._scheduleReconnect();
+      }
     }
   }
 
@@ -330,11 +370,40 @@ class PulsettoBluetooth {
   // Handle page visibility changes
   _handleVisibilityChange() {
     const hidden = document.hidden;
+    
     this.emit('visibilityChange', { 
       hidden, 
       visible: !hidden,
       timestamp: Date.now() 
     });
+
+    // When tab becomes hidden, note that we were connected
+    if (hidden && this.isConnected) {
+      this.wasConnectedBeforeHidden = true;
+      // Send immediate disconnect warning
+      this.emit('backgroundWarning', { 
+        message: '⚠️ Tab hidden - Bluetooth may disconnect. Keep tab visible for continuous stimulation.',
+        timestamp: Date.now()
+      });
+    }
+    
+    // When tab becomes visible again, attempt reconnection if we were connected before
+    if (!hidden && this.wasConnectedBeforeHidden) {
+      this.wasConnectedBeforeHidden = false;
+      
+      if (!this.isConnected && this.lastDeviceId) {
+        this.emit('reconnectAfterVisibility', {
+          message: 'Tab visible again - attempting to reconnect...',
+          timestamp: Date.now()
+        });
+        
+        // Note: Web Bluetooth requires user gesture for reconnection
+        // We can only auto-reconnect if the device object is still valid
+        if (this.device && this.device.gatt) {
+          this._scheduleReconnect();
+        }
+      }
+    }
   }
 
   // Query battery voltage

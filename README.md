@@ -18,6 +18,37 @@ A vanilla JavaScript single-page application (SPA) for controlling Pulsetto vagu
 - **Wall-Clock Reconciliation**: Accurate timing across background transitions
 - **Service Worker**: Offline capability and background sync support
 - **PWA Manifest**: Installable as a progressive web app
+- **Keepalive Pings**: Sends periodic commands to prevent connection timeout
+
+### ⚠️ Important: Chrome Background Limitation
+**Chrome terminates Web Bluetooth connections when tabs go to the background.** This is a browser security feature that cannot be fully bypassed. However, this app implements **aggressive countermeasures** to maximize the chance of survival:
+
+**Implemented Keepalive Techniques:**
+1. **Wake Lock API** - Keeps screen on during sessions
+2. **Silent Audio Context** - Keeps audio processing thread alive (prevents some suspension)
+3. **Web Worker** - Runs timer in separate thread
+4. **BroadcastChannel** - Cross-tab communication pings
+5. **No-op CSS Animation** - Constant layout recalc prevents some throttling
+6. **MessageChannel Microtasks** - Aggressive scheduling
+7. **Canvas Render Loop** - requestAnimationFrame keeps rendering thread active
+8. **Periodic Background Sync** - Scheduled wake-ups (Chrome only)
+9. **Persistent Notification** - requireInteraction keeps service worker alive
+10. **Aggressive Pinging** - 250ms interval when hidden
+
+**Best Practices for Users:**
+1. **Keep Chrome in the foreground** - Do not switch to other apps
+2. **Use a dedicated Chrome window** - Not a background tab
+3. **Disable screen timeout** in OS settings
+4. **On Android**: 
+   - Enable "Desktop site" mode
+   - Use split-screen to keep Chrome partially visible
+   - Disable Chrome's "Battery Saver" for this site
+5. **On Desktop**: Use a separate Chrome window, not a tab
+
+**If Disconnection Occurs:**
+- Return to the tab immediately
+- The app attempts auto-reconnection (requires user interaction)
+- Session timing continues accurately via wall-clock reconciliation
 
 ### BLE Protocol
 - **ASCII Protocol**: Uses string-based commands with newline terminator
@@ -121,17 +152,36 @@ npx http-server -p 8443 -S -C cert.pem -K key.pem
 
 ### Background Handling
 
-When the app goes to background:
-1. Tick timer pauses
-2. Device is deactivated (stop command sent)
-3. Wake lock is released
-4. Wall-clock time continues tracking
+**Web Bluetooth Limitation**: Chrome aggressively suspends background tabs, including Bluetooth connections. This app implements **11 different keepalive techniques** to resist suspension:
 
-When returning to foreground:
-1. Time is recalculated from wall clock
-2. Device is reactivated with current state
-3. Tick timer resumes
-4. Wake lock is re-acquired
+**Keepalive Systems:**
+1. Wake Lock API (screen on)
+2. Silent Audio Context (audio thread alive)
+3. Web Worker (isolated timer thread)
+4. BroadcastChannel (cross-tab pings)
+5. CSS Animation (layout thrashing)
+6. MessageChannel (microtask scheduling)
+7. Canvas Loop (rendering thread alive)
+8. Periodic Background Sync (scheduled wake)
+9. Persistent Notification (service worker alive)
+10. 250ms Aggressive Pinging (when hidden)
+11. beforeunload Warning (prevents accidental nav)
+
+**When tab goes to background:**
+1. Warning banner appears immediately
+2. All 11 keepalive systems activate
+3. Device stops for safety (stop command sent)
+4. Wall-clock tracking continues (accurate timing)
+5. 250ms ping interval attempts to prevent full suspension
+
+**When returning to foreground:**
+1. Warning banner removed
+2. Time recalculated from wall-clock
+3. Connection checked and re-established if needed
+4. Device reactivated with current session state
+5. All keepalive systems continue
+
+**Reality Check**: Despite all countermeasures, Chrome **will** eventually suspend background tabs. The techniques increase survival time but cannot guarantee indefinite background operation.
 
 ## Security Notes
 

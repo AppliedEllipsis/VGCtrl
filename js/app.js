@@ -29,8 +29,8 @@ class PulsettoApp {
     
     // Background keepalive system
     this.bgKeepalive = new BackgroundKeepalive({
-      onKeepaliveTick: (data) => this._onBackgroundTick(data),
-      onWarn: (msg) => this.log(msg, 'warning')
+      onKeepaliveTick: (data) => this._onBackgroundTick(data)
+      // onWarn removed - avoid notification spam
     });
     
     // DOM references
@@ -203,21 +203,11 @@ class PulsettoApp {
     this.ble.on('visibilityChange', ({ hidden }) => {
       this.ui.visibilityStatus.textContent = hidden ? 'Background' : 'Visible';
       this.ui.visibilityStatus.classList.toggle('hidden-state', hidden);
-      
-      // Remove warning banner when visible again
+
+      // Reset throttle warning when tab becomes visible
       if (!hidden) {
-        const banner = document.getElementById('background-warning');
-        if (banner) banner.remove();
+        this._throttleWarned = false;
       }
-    });
-    
-    this.ble.on('backgroundWarning', ({ message }) => {
-      this.log(message, 'warning');
-      this._showBackgroundWarning();
-    });
-    
-    this.ble.on('reconnectAfterVisibility', ({ message }) => {
-      this.log(message, 'info');
     });
   }
 
@@ -288,9 +278,9 @@ class PulsettoApp {
     });
     
     this.clock.on('backgrounded', () => {
-      this.log('App backgrounded - keepalive active, device continues', 'warning');
-      // Note: bgKeepalive prevents tab throttling, session continues
-      // Device keeps running - DO NOT send stop command
+      // Silent background transition - keepalive handles this automatically
+      // Only log to console to avoid UI notification spam
+      console.log('[App] Backgrounded - keepalive active');
     });
     
     this.clock.on('foregrounded', () => {
@@ -458,48 +448,14 @@ class PulsettoApp {
     }
   }
 
-  // Show background warning to user
-  _showBackgroundWarning() {
-    // Create visual banner warning
-    let banner = document.getElementById('background-warning');
-    if (!banner) {
-      banner = document.createElement('div');
-      banner.id = 'background-warning';
-      banner.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        background: #ff9800;
-        color: #000;
-        padding: 12px;
-        text-align: center;
-        font-weight: bold;
-        z-index: 10000;
-        animation: pulse-warning 2s infinite;
-      `;
-      banner.innerHTML = '⚠️ Keep this tab visible to maintain device connection';
-      document.body.appendChild(banner);
-      
-      // Add animation style
-      const style = document.createElement('style');
-      style.textContent = `
-        @keyframes pulse-warning {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-  }
-
   // Handle background keepalive ticks from Web Worker
   _onBackgroundTick(data) {
-    // If drift is high, we might be throttled - warn user
-    if (data.drift > 500) {
+    // Track if we've already warned about throttling this session
+    if (data.drift > 500 && !this._throttleWarned) {
+      this._throttleWarned = true;
       this.log('⚠️ Timer throttled - keep tab visible for best results', 'warning');
     }
-    
+
     // Ensure audio context stays alive (prevents suspension)
     if (this.bgKeepalive.audioContext?.state === 'suspended') {
       this.bgKeepalive.audioContext.resume();

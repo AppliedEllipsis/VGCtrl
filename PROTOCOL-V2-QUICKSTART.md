@@ -113,6 +113,13 @@ await bt.sendCommand('5\n');  // Fire and forget
 - Try toggling Bluetooth off/on
 - Check browser console for errors
 
+### "GATT operation already in progress"
+**Fixed**: The v2 Bluetooth manager now includes a GATT operation queue that automatically serializes all GATT writes. This error should not occur with the current implementation.
+
+If you still see this error:
+- Verify you're using the latest `bluetooth-v2.js` with `_gattQueue` support
+- Check that `sendPacket()` is being used (not direct `writeValue` calls)
+
 ### "CRC mismatch" or packet errors
 The CRC algorithm might differ from actual device. Try:
 1. Check console for exact error

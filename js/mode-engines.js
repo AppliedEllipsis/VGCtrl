@@ -90,50 +90,94 @@ class StressReliefEngine extends ModeEngine {
   }
 }
 
-// Sleep - 5-phase rotation (D→A→D→C→D)
+// Sleep - 5-phase rotation (D→A→D→C→D) with end-of-session fade
 class SleepEngine extends ModeEngine {
   constructor() {
     super();
     this.phases = ['D', 'A', 'D', 'C', 'D'];
+    this._lastPhaseIndex = -1;
+    this._lastFadeStrength = -1;
   }
 
   start(baseStrength, totalDuration) {
     super.start(baseStrength, totalDuration);
-    const phaseIndex = 0;
-    const strength = Math.max(1, Math.floor(baseStrength * 0.8)); // 80% intensity
-    return this._phaseCommands(phaseIndex, strength);
+    this._lastPhaseIndex = 0;
+    this._lastFadeStrength = baseStrength;
+    return this._phaseCommands(0, baseStrength);
   }
 
   tick(elapsed, totalDuration, baseStrength) {
-    const strength = Math.max(1, Math.floor(baseStrength * 0.8));
     const phaseDuration = totalDuration / this.phases.length;
     const phaseIndex = Math.min(Math.floor(elapsed / phaseDuration), this.phases.length - 1);
-    
+    const fadeStrength = this._fadeStrength(elapsed, totalDuration, baseStrength);
+
+    const commands = [];
+
+    // Phase transition
+    if (phaseIndex !== this._lastPhaseIndex) {
+      commands.push(this._phaseCommand(phaseIndex));
+      this._lastPhaseIndex = phaseIndex;
+    }
+
+    // Fade strength change
+    if (fadeStrength !== this._lastFadeStrength) {
+      commands.push(PulsettoProtocol.Commands.intensity(fadeStrength));
+      this._lastFadeStrength = fadeStrength;
+    }
+
+    const fadeNote = fadeStrength < baseStrength ? ' · Fading' : '';
+
     return new ModeTickResult({
-      commands: this._phaseCommands(phaseIndex, strength),
+      commands,
       isStimulationActive: true,
-      effectiveStrength: strength,
+      effectiveStrength: fadeStrength !== baseStrength ? fadeStrength : null,
       activeChannel: ActiveChannel.BILATERAL,
-      statusText: `Sleep · Phase ${phaseIndex + 1}/${this.phases.length}`
+      statusText: `Sleep · Phase ${phaseIndex + 1}/${this.phases.length}${fadeNote}`
     });
   }
 
-  _phaseCommands(phaseIndex, strength) {
+  _phaseCommand(phaseIndex) {
     const phase = this.phases[phaseIndex];
-    let command;
     switch(phase) {
-      case 'A': command = PulsettoProtocol.Commands.activateLeft; break;
-      case 'C': command = PulsettoProtocol.Commands.activateRight; break;
-      default: command = PulsettoProtocol.Commands.activateBilateral;
+      case 'A': return PulsettoProtocol.Commands.activateLeft;
+      case 'C': return PulsettoProtocol.Commands.activateRight;
+      default: return PulsettoProtocol.Commands.activateBilateral;
     }
-    return [command, PulsettoProtocol.Commands.intensity(strength)];
+  }
+
+  _phaseCommands(phaseIndex, strength) {
+    return [this._phaseCommand(phaseIndex), PulsettoProtocol.Commands.intensity(strength)];
+  }
+
+  // Fade: last 20% reduces strength by -1 then -2
+  _fadeStrength(elapsed, totalDuration, baseStrength) {
+    const fadeStart = Math.floor(totalDuration * 4 / 5);
+    if (elapsed < fadeStart || totalDuration <= fadeStart) {
+      return baseStrength;
+    }
+
+    const fadeLen = totalDuration - fadeStart;
+    const fadeElapsed = elapsed - fadeStart;
+    const fadeMid = Math.floor(fadeLen / 2);
+
+    if (fadeElapsed < fadeMid) {
+      return Math.max(1, baseStrength - 1);
+    } else {
+      return Math.max(1, baseStrength - 2);
+    }
   }
 
   reconnectCommands(elapsed, totalDuration, baseStrength) {
-    const strength = Math.max(1, Math.floor(baseStrength * 0.8));
     const phaseDuration = totalDuration / this.phases.length;
     const phaseIndex = Math.min(Math.floor(elapsed / phaseDuration), this.phases.length - 1);
-    return this._phaseCommands(phaseIndex, strength);
+    const fadeStrength = this._fadeStrength(elapsed, totalDuration, baseStrength);
+    return this._phaseCommands(phaseIndex, fadeStrength);
+  }
+
+  reset() {
+    super.reset();
+    this._lastPhaseIndex = -1;
+    this._lastFadeStrength = -1;
   }
 }
 

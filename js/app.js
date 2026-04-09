@@ -964,38 +964,51 @@ class PulsettoApp {
    * User must manually adjust or confirm settings.
    */
   /**
-   * Handle timeline script step change - update UI to show current "instruction"
+   * Handle timeline script step change
    * Format: { channel, intensity, label, type, start, end, isSeek? }
-   * Timeline is purely visual - no commands sent automatically.
+   * Only triggers commands on manual seek (isSeek=true), not natural progression.
    */
   _onTimelineScriptStep(step) {
-    // Update intensity slider display (don't send command)
+    const isActive = this.clock.isRunning || this.clock.isPaused;
+    if (!isActive) return;
+
+    // Update UI display for all steps
     if (step.intensity !== undefined) {
       this.ui.intensityValue.textContent = step.intensity;
       this.ui.intensitySlider.value = step.intensity;
       this.baseStrength = step.intensity;
     }
 
-    // Update channel button states (don't send command)
     if (step.channel) {
       [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
         if (btn) btn.classList.remove('active');
       });
-
       let activeBtn = null;
-      let btnLabel = 'Auto';
       switch (step.channel) {
-        case 'left': activeBtn = this.ui.channelLeft; btnLabel = 'Left'; break;
-        case 'right': activeBtn = this.ui.channelRight; btnLabel = 'Right'; break;
-        case 'bilateral': activeBtn = this.ui.channelBoth; btnLabel = 'Both'; break;
-        default: activeBtn = this.ui.channelAuto; btnLabel = 'Auto';
+        case 'left': activeBtn = this.ui.channelLeft; break;
+        case 'right': activeBtn = this.ui.channelRight; break;
+        case 'bilateral': activeBtn = this.ui.channelBoth; break;
+        default: activeBtn = this.ui.channelAuto;
       }
       if (activeBtn) activeBtn.classList.add('active');
-
-      // Log the script step (user can manually apply)
-      const seekPrefix = step.isSeek ? '[Seek] ' : '';
-      this.log(`${seekPrefix}Script: ${step.label} (${btnLabel}, ${step.intensity})`, 'info');
     }
+
+    // Only send commands on manual seek (not natural playback)
+    if (step.isSeek) {
+      if (step.intensity !== undefined && step.type !== 'rest') {
+        this.setIntensity(step.intensity);
+      }
+      if (step.channel && step.channel !== 'off') {
+        this.setChannelOverride(step.channel);
+      }
+    }
+
+    // Log the script step
+    const seekPrefix = step.isSeek ? '[Seek] ' : '';
+    const chLabel = step.channel === 'left' ? 'Left' :
+                   step.channel === 'right' ? 'Right' :
+                   step.channel === 'bilateral' ? 'Both' : 'Auto';
+    this.log(`${seekPrefix}Script: ${step.label} (${chLabel}, ${step.intensity})`, 'info');
   }
 
   _resumeSessionOnDevice() {

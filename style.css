@@ -683,6 +683,225 @@ input[type="range"]:disabled {
   background: rgba(210, 153, 34, 0.1);
 }
 
+/* Session Timeline */
+.timeline-container {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.timeline-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.timeline-position {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-canvas-wrapper {
+  position: relative;
+  height: 120px;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.timeline-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.timeline-scrubber {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #fff;
+  pointer-events: none;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.scrubber-handle {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(0,0,0,0.5);
+}
+
+.scrubber-tooltip {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.timeline-canvas-wrapper:hover .scrubber-tooltip,
+.timeline-container.scrubbing .scrubber-tooltip {
+  opacity: 1;
+}
+
+.timeline-hover-tooltip {
+  position: absolute;
+  top: 5px;
+  left: 0;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.9);
+  border: 1px solid var(--color-border);
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.timeline-hover-tooltip.hidden {
+  display: none;
+}
+
+.timeline-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.btn-timeline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-timeline:hover {
+  background: var(--color-border);
+  border-color: var(--color-text-muted);
+}
+
+.btn-timeline svg {
+  display: block;
+}
+
+.timeline-play-indicator {
+  min-width: 70px;
+  text-align: center;
+}
+
+.play-status {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.play-status.playing {
+  background: rgba(63, 185, 80, 0.15);
+  color: #3fb950;
+}
+
+.play-status.paused {
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+}
+
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-item.hidden {
+  display: none;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.legend-color.active-left { background: #1f6feb; }
+.legend-color.active-right { background: #238636; }
+.legend-color.active-both { background: #8957e5; }
+.legend-color.active-rest { background: #484f58; }
+.legend-color.active-breathing {
+  background: linear-gradient(90deg, #8957e5, #238636);
+}
+
+/* Timeline responsive adjustments */
+@media (max-width: 360px) {
+  .timeline-controls {
+    gap: 4px;
+  }
+  
+  .btn-timeline {
+    padding: 6px 8px;
+    font-size: 0.6875rem;
+  }
+  
+  .timeline-legend {
+    gap: 8px;
+    font-size: 0.625rem;
+  }
+  
+  .legend-color {
+    width: 10px;
+    height: 10px;
+  }
+}
+
 /* Responsive */
 @media (max-width: 360px) {
   .timer-value {

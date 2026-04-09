@@ -11,6 +11,7 @@ class PulsettoApp {
     this.ble = new PulsettoBluetooth();
     this.clock = new SessionClock();
     this.modeEngine = null;
+    this.timeline = null;
     
     // State
     this.selectedMode = 'calm';
@@ -112,7 +113,11 @@ class PulsettoApp {
     this.ui.progressFill = document.getElementById('progress-fill');
     this.ui.elapsedTime = document.getElementById('elapsed-time');
     this.ui.remainingTime = document.getElementById('remaining-time');
-    
+
+    // Timeline
+    this.ui.timelinePanel = document.getElementById('timeline-panel');
+    this.ui.timelineRoot = document.getElementById('timeline-root');
+
     // Footer
     this.ui.wakeLockStatus = document.getElementById('wake-lock-status');
     this.ui.visibilityStatus = document.getElementById('visibility-status');

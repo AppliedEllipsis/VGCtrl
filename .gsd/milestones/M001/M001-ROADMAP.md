@@ -6,4 +6,4 @@ M001
 ## Slice Overview
 | ID | Slice | Risk | Depends | Done | After this |
 |----|-------|------|---------|------|------------|
-| S01 | S01 | medium | — | ⬜ | TBD |
+| S01 | S01 | medium | — | ✅ | TBD |

@@ -1010,7 +1010,7 @@ class PulsettoApp {
   }
 
   // Audio feedback methods using Web Audio API
-  _playTone(frequency, duration, type = 'sine') {
+  _playTone(frequency, duration, type = 'sine', gainValue = 0.1) {
     if (!this.audioEnabled) return;
     const ctx = this.bgKeepalive?.audioContext;
     if (!ctx || ctx.state === 'suspended') return;
@@ -1021,7 +1021,7 @@ class PulsettoApp {
 
       osc.type = type;
       osc.frequency.value = frequency;
-      gain.gain.value = 0.1; // Low volume for subtle feedback
+      gain.gain.value = gainValue;
 
       osc.connect(gain);
       gain.connect(ctx.destination);
@@ -1037,9 +1037,18 @@ class PulsettoApp {
   }
 
   playPhaseSound() {
-    // Short 200Hz beep (100ms) for phase changes
-    this._playTone(200, 100, 'sine');
+    // Two-tone ascending chime for phase changes (440Hz -> 660Hz)
+    // Louder (0.2 gain), longer (200ms per tone), with harmonic overtone
+    this._playTone(440, 200, 'sine', 0.2);
+    setTimeout(() => this._playTone(660, 250, 'sine', 0.25), 180);
     console.log('[Audio] Phase change sound');
+  }
+
+  playPhaseWarningSound() {
+    // Warning tone before phase change - distinct from phase change sound
+    // Single higher-pitch beep (880Hz) to alert user change is coming
+    this._playTone(880, 150, 'sine', 0.15);
+    console.log('[Audio] Phase warning sound');
   }
 
   playCompletionSound() {
@@ -1093,6 +1102,13 @@ class PulsettoApp {
   _onTimelineScriptStep(step) {
     const isActive = this.clock.isRunning || this.clock.isPaused;
     if (!isActive) return;
+
+    // Handle phase warning (3 seconds before change)
+    if (step.type === 'phase-warning') {
+      this.log(`  [Warning] Phase change in ${step.timeUntilChange}s`, 'info');
+      this.playPhaseWarningSound();
+      return;
+    }
 
     // Update UI display for all steps
     if (step.intensity !== undefined) {

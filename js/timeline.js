@@ -113,8 +113,13 @@ class SessionTimeline {
     this.scrubber = this.container.querySelector('.timeline-scrubber');
     this.tooltip = this.container.querySelector('.scrubber-tooltip');
     this.positionDisplay = this.container.querySelector('.timeline-position');
+    this.phaseCountdownDisplay = this.container.querySelector('.timeline-phase-countdown');
     this.playStatus = this.container.querySelector('.play-status');
     this.btnFollow = this.container.querySelector('.btn-follow');
+
+    // Phase change warning tracking
+    this._nextChangeTime = null;
+    this._warningTriggered = false;
 
     this._setupHighDPI();
   }
@@ -286,6 +291,10 @@ class SessionTimeline {
       this.currentInstruction = instruction;
       this._lastReportedIntensity = currentIntensity;
 
+      // Reset warning for new phase
+      this._warningTriggered = false;
+      this._nextChangeTime = instruction?.end ?? null;
+
       if (this.onScriptStepCallback) {
         const step = {
           channel: instruction.channel,
@@ -301,7 +310,37 @@ class SessionTimeline {
       }
     }
 
+    // Calculate and display time until next phase change
+    this._updatePhaseCountdown();
+
+    // Check for upcoming phase change (3 seconds warning)
+    if (this._nextChangeTime !== null && !this._warningTriggered) {
+      const timeUntilChange = this._nextChangeTime - this.state.elapsed;
+      if (timeUntilChange <= 3 && timeUntilChange > 0) {
+        this._warningTriggered = true;
+        // Trigger pre-phase warning sound
+        if (this.onScriptStepCallback) {
+          this.onScriptStepCallback({
+            type: 'phase-warning',
+            timeUntilChange: Math.ceil(timeUntilChange)
+          });
+        }
+      }
+    }
+
     this.tickTimer = setTimeout(() => this._tick(), 1000);
+  }
+
+  _updatePhaseCountdown() {
+    if (!this.script || !this.currentInstruction) return;
+
+    const timeUntilChange = this.currentInstruction.end - this.state.elapsed;
+    if (timeUntilChange > 0 && this.state.isPlaying) {
+      this.phaseCountdownDisplay.textContent = `Next: ${Math.ceil(timeUntilChange)}s`;
+      this.phaseCountdownDisplay.classList.remove('hidden');
+    } else {
+      this.phaseCountdownDisplay.classList.add('hidden');
+    }
   }
 
   seek(elapsedSeconds) {

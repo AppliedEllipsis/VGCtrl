@@ -72,12 +72,13 @@ class PulsettoApp {
     });
     
     // Handle timeline scrubbing (seeking)
-    this.timeline.onScrub((newElapsed) => {
-      this._seekSession(newElapsed);
+    // The callback receives (elapsed, doneCallback) - doneCallback must be called when seek is complete
+    this.timeline.onScrub((newElapsed, doneCallback) => {
+      this._seekSession(newElapsed, doneCallback);
     });
   }
 
-  _seekSession(newElapsed) {
+  _seekSession(newElapsed, doneCallback = null) {
     if (!this.clock.isRunning && !this.clock.isPaused) return;
     
     // Clamp to valid range
@@ -90,11 +91,11 @@ class PulsettoApp {
     
     // Debounce seek operations to prevent GATT conflicts
     this._seekTimeout = setTimeout(async () => {
-      await this._executeSeek(clamped);
+      await this._executeSeek(clamped, doneCallback);
     }, 50);
   }
 
-  async _executeSeek(clamped) {
+  async _executeSeek(clamped, doneCallback = null) {
     const wasRunning = this.clock.isRunning;
     
     if (wasRunning) {
@@ -124,15 +125,11 @@ class PulsettoApp {
       }
       
       if (commands.length > 0) {
-        // Queue seek commands (will coalesce with pending user changes)
+        // Send seek commands with standard 2s delays between them
         for (const cmd of commands) {
-          if (cmd === PulsettoProtocol.Commands.activateLeft ||
-              cmd === PulsettoProtocol.Commands.activateRight ||
-              cmd === PulsettoProtocol.Commands.activateBilateral ||
-              cmd === PulsettoProtocol.Commands.stop) {
-            this.ble.queueChannel(cmd);
-          } else if (/^[1-9]\n$/.test(cmd)) {
-            this.ble.queueIntensity(cmd);
+          await this.ble.sendCommand(cmd);
+          if (cmd !== commands[commands.length - 1]) {
+            await new Promise(r => setTimeout(r, 2000));
           }
         }
         
@@ -141,13 +138,17 @@ class PulsettoApp {
       }
     }
     
-    // Update timeline
+    // Update timeline (which will clear seeking flag via callback)
     this.timeline.updateProgress(clamped, wasRunning);
+    
+    // Signal seek complete to timeline
+    if (doneCallback) {
+      doneCallback();
+    }
+    this.timeline.seekComplete();
     
     // Resume if was running
     if (wasRunning) {
-      // Small delay to let seek commands finish before resuming tick processing
-      await new Promise(r => setTimeout(r, 100));
       this.clock.resume();
     }
     
@@ -300,7 +301,24 @@ class PulsettoApp {
       this._stopKeepalive();
       this._stopStatusPoll();
       
-      if (unexpected && this.clock.isRunning) {
+      // Reset session state
+      this.isStimulationActive = false;
+      this.effectiveStrength = null;
+      this.activeChannel = ActiveChannel.OFF;
+      
+      // Stop any running session
+      if (this.clock.isRunning || this.clock.isPaused) {
+        this.clock.stop();
+        this.log('Session stopped due to disconnect', 'warning');
+      }
+      
+      // Clear mode engine and timeline
+      this.modeEngine = null;
+      if (this.timeline) {
+        this.timeline.seekComplete(); // Clear any pending seek
+      }
+      
+      if (unexpected) {
         this.log('Connection lost unexpectedly', 'error');
       } else {
         this.log('Disconnected', 'info');

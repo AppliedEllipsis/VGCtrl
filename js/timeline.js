@@ -30,6 +30,7 @@ class SessionTimeline {
 
     this.modeEngine = null;
     this.scrubbing = false;
+    this.seeking = false;  // Track when a seek operation is in progress
     this.onScrubCallback = null;
 
     this._init();
@@ -191,11 +192,22 @@ class SessionTimeline {
     if (!this.scrubbing) return;
     
     this.scrubbing = false;
+    this.seeking = true;  // Mark seeking in progress
     this.container.classList.remove('scrubbing');
     
     if (this.onScrubCallback) {
-      this.onScrubCallback(this.state.elapsed);
+      // Pass a done callback so app can signal when seek is complete
+      this.onScrubCallback(this.state.elapsed, () => {
+        this.seeking = false;
+      });
+    } else {
+      this.seeking = false;
     }
+  }
+
+  // Called by app when seek is fully complete
+  seekComplete() {
+    this.seeking = false;
   }
 
   _updateFromMouse(e) {
@@ -250,6 +262,9 @@ class SessionTimeline {
   }
 
   updateProgress(elapsed, isPlaying = true) {
+    // Don't update from clock ticks while seeking - wait for seek to complete
+    if (this.seeking) return;
+    
     this.state.elapsed = elapsed;
     this.state.isPlaying = isPlaying;
     

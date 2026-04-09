@@ -72,11 +72,16 @@ class CommandQueueManager {
     }
   }
 
-  // Clear all pending commands
+  // Clear all pending commands and reset state
   _clearPending() {
     this.pendingChannel = null;
     this.pendingIntensity = null;
     this.pendingStep = null;
+    this.isProcessing = false;
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
   }
 
   // Schedule processing after debounce delay
@@ -173,7 +178,14 @@ class CommandQueueManager {
     return /^[1-9]\n$/.test(cmd);
   }
 
-  // Force immediate send (for session start/resume)
+  // Full reset on disconnect - clears all state including last sent
+  reset() {
+    this._clearPending();
+    this.lastChannel = null;
+    this.lastIntensity = null;
+  }
+
+  // Force immediate send (for session start/resume) - 2s delays between commands
   async sendImmediate(commands) {
     // Wait for any current processing
     while (this.isProcessing) {
@@ -195,7 +207,7 @@ class CommandQueueManager {
         }
       } catch (err) {
         this.bt.emit('commandError', { command: cmd, error: err.message, timestamp: Date.now() });
-        console.warn('Immediate command failed:', err.message);
+        console.warn('Command failed:', err.message);
       }
     }
     
@@ -397,7 +409,11 @@ class PulsettoBluetooth {
     this.rxCharacteristic = null;
     this.txCharacteristic = null;
     this.pendingPromises.clear();
-    this.clearCommandQueue();
+    
+    // Full reset of command manager
+    if (this.commandManager) {
+      this.commandManager.reset();
+    }
   }
 
   // Set connection state

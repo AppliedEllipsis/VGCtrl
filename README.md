@@ -274,3 +274,23 @@ You can do whatever the fuck you want with this software at your OWN RISK. The a
 - [Pulsetto Protocol Matrix](../docs/knowledgebase/ble_protocol_matrix.md)
 - [Pulse Libre BLE Implementation](../pulse-libre/lib/ble/protocol_canonical.dart)
 - [Open Pulse iOS Reference](../open-pulse/OpenPulse/)
+
+---
+
+## Support This Project ❤️
+
+If you find this extension useful, then please support its continued development:
+
+### Crypto Donation
+
+If you'd prefer to donate directly via cryptocurrency, you can send Bitcoin to:
+
+**`bc1q8nrdytlvms0a0zurp04xwfppflcxwgpyrzw5hn`**
+
+Thank you for supporting free and open source software! 🙏
+
+---
+
+## Co-vibe coded with AI
+
+Built with human creativity enhanced by artificial intelligence.

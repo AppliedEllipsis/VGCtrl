@@ -38,6 +38,9 @@ class PulsettoApp {
     // Low battery warning tracking (warn once per session)
     this._lowBatteryWarned = false;
 
+    // Dynamic favicon for tab state visualization
+    this.favicon = new DynamicFavicon();
+
     // Audio feedback settings (toggle UI coming in T04)
     this.audioEnabled = true;
 
@@ -331,11 +334,14 @@ class PulsettoApp {
       this.ui.btnDisconnect.classList.remove('hidden');
 
       this.log(`Connected to ${name}`, 'success');
-      
+
+      // Update favicon to connected state
+      this.favicon?.setConnected(true);
+
       // Query status immediately
       this.ble.queryStatus();
       this._startStatusPoll();
-      
+
       this._enableSessionControls(true);
       
       // Auto-start session with current mode settings
@@ -361,7 +367,10 @@ class PulsettoApp {
       // Reset warning flags
       this._lowBatteryWarned = false;
       this._userSetIntensity = false;
-      
+
+      // Reset favicon to disconnected state
+      this.favicon?.reset();
+
       // Stop any running session
       if (this.clock.isRunning || this.clock.isPaused) {
         this.clock.stop();
@@ -428,6 +437,8 @@ class PulsettoApp {
       this._startKeepalive();
       this.bgKeepalive.start(); // Start background keepalive prevention
       this._updateActionButtons();
+      this.favicon?.setRunning(true);
+      this.favicon?.setPaused(false);
     });
     
     this.clock.on('tick', ({ remaining, elapsed, progress }) => {
@@ -438,21 +449,25 @@ class PulsettoApp {
       this.log('Session paused', 'warning');
       this._stopKeepalive();
       this.bgKeepalive.stop();
-      
+
       // Deactivate device
       this._sendStopCommand();
-      
+
       this._updateActionButtons();
+      this.favicon?.setRunning(false);
+      this.favicon?.setPaused(true);
     });
     
     this.clock.on('resumed', () => {
       this.log('Session resumed', 'success');
       this._startKeepalive();
       this.bgKeepalive.start();
-      
+
       // Resume on device
       this._resumeSessionOnDevice();
       this._updateActionButtons();
+      this.favicon?.setRunning(true);
+      this.favicon?.setPaused(false);
     });
     
     this.clock.on('stopped', () => {
@@ -460,15 +475,19 @@ class PulsettoApp {
       this._stopKeepalive();
       this._stopStatusPoll();
       this.bgKeepalive.stop();
-      
+
       // Deactivate device
       this._sendStopCommand();
-      
+
       this._updateActionButtons();
       this._resetSessionUI();
-      
+
       // Reset user intensity flag so next session starts fresh with mode defaults
       this._userSetIntensity = false;
+
+      // Reset favicon to connected state (not running)
+      this.favicon?.setRunning(false);
+      this.favicon?.setPaused(false);
     });
     
     this.clock.on('completed', async () => {
@@ -488,6 +507,10 @@ class PulsettoApp {
 
       // Reset user intensity flag so next session starts fresh with mode defaults
       this._userSetIntensity = false;
+
+      // Reset favicon to connected state (not running)
+      this.favicon?.setRunning(false);
+      this.favicon?.setPaused(false);
     });
     
     this.clock.on('backgrounded', () => {
@@ -668,6 +691,9 @@ class PulsettoApp {
 
   async setChannelOverride(channel) {
     this.channelOverride = channel;
+
+    // Update favicon with new channel
+    this.favicon?.setChannel(channel);
 
     // Update button states
     [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
@@ -951,6 +977,9 @@ class PulsettoApp {
     this.baseStrength = value;
     this._userSetIntensity = true; // Mark as manually set by user
     this.ui.intensityValue.textContent = value;
+
+    // Update favicon with new intensity
+    this.favicon?.setIntensity(value);
 
     // Save to localStorage
     try {

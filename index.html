@@ -43,13 +43,15 @@
 
     <!-- Main Content -->
     <main class="main">
-      <!-- Connection Panel -->
-      <section id="connection-panel" class="panel">
+      <!-- Top Row: Connection + Device Info -->
+      <section id="connection-panel" class="panel panel-compact">
+        <div class="connection-row">
           <button id="btn-scan" class="btn btn-primary">Scan for Device</button>
-        <button id="btn-disconnect" class="btn btn-secondary hidden">Disconnect</button>
-        <div id="device-info" class="device-info hidden">
-          <span id="device-name">--</span>
-          <span id="device-id" class="device-id">--</span>
+          <button id="btn-disconnect" class="btn btn-secondary hidden">Disconnect</button>
+          <div id="device-info" class="device-info hidden">
+            <span id="device-name">--</span>
+            <span id="device-id" class="device-id">--</span>
+          </div>
         </div>
       </section>
 
@@ -58,74 +60,79 @@
         <div id="timeline-root"></div>
       </section>
 
-      <!-- Session Controls -->
+      <!-- Controls Grid -->
       <section id="session-panel" class="panel">
-        <!-- Mode Selection -->
-        <div class="mode-selector">
-          <label>Mode</label>
-          <select id="mode-select" disabled>
-            <option value="sleep" selected>Sleep</option>
-            <option value="stress">Stress Relief</option>
-            <option value="focus">Focus</option>
-            <option value="pain">Pain Relief</option>
-            <option value="calm">Calm</option>
-            <option value="headache">Headache</option>
-            <option value="nausea">Nausea</option>
-            <option value="meditation">Meditation</option>
-          </select>
-        </div>
-
-        <!-- Mode Description -->
-        <div id="mode-description" class="mode-description">
-          <p class="mode-summary">--</p>
-          <div class="mode-details">
-            <span class="mode-detail" id="mode-channel">--</span>
-            <span class="mode-detail" id="mode-pattern">--</span>
-            <span class="mode-detail" id="mode-timing">--</span>
+        <!-- Top Row: Mode + Description -->
+        <div class="controls-row">
+          <div class="mode-selector">
+            <label>Mode</label>
+            <select id="mode-select" disabled>
+              <option value="sleep" selected>Sleep</option>
+              <option value="stress">Stress Relief</option>
+              <option value="focus">Focus</option>
+              <option value="pain">Pain Relief</option>
+              <option value="calm">Calm</option>
+              <option value="headache">Headache</option>
+              <option value="nausea">Nausea</option>
+              <option value="meditation">Meditation</option>
+            </select>
+          </div>
+          <div id="mode-description" class="mode-description compact">
+            <p class="mode-summary">--</p>
+            <div class="mode-details">
+              <span class="mode-detail" id="mode-channel">--</span>
+              <span class="mode-detail" id="mode-pattern">--</span>
+              <span class="mode-detail" id="mode-timing">--</span>
+            </div>
           </div>
         </div>
 
-        <!-- Channel Override -->
-        <div class="channel-override">
-          <label>Channel Override</label>
-          <div class="channel-buttons">
-            <button id="channel-auto" class="btn-channel active" data-channel="auto">Auto (Mode)</button>
-            <button id="channel-left" class="btn-channel" data-channel="left">Left Only</button>
-            <button id="channel-right" class="btn-channel" data-channel="right">Right Only</button>
-            <button id="channel-both" class="btn-channel" data-channel="bilateral">Both</button>
+        <!-- Second Row: Channel + Intensity + Fade (side by side on desktop) -->
+        <div class="controls-row controls-row-3col">
+          <!-- Channel Override -->
+          <div class="channel-override compact">
+            <label>Channel</label>
+            <div class="channel-buttons">
+              <button id="channel-auto" class="btn-channel active" data-channel="auto">Auto</button>
+              <button id="channel-left" class="btn-channel" data-channel="left">Left</button>
+              <button id="channel-right" class="btn-channel" data-channel="right">Right</button>
+              <button id="channel-both" class="btn-channel" data-channel="bilateral">Both</button>
+            </div>
           </div>
-          <div class="fade-control">
-            <label for="fade-select">Fade:</label>
-            <select id="fade-select" class="fade-select">
+
+          <!-- Intensity -->
+          <div class="intensity-section compact">
+            <label>Intensity <span id="intensity-value" class="intensity-badge">8</span></label>
+            <div class="intensity-control">
+              <input type="range" id="intensity-slider" min="0" max="9" value="8" disabled>
+              <div class="intensity-scale">
+                <span>0</span><span>9</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fade Control -->
+          <div class="fade-control compact">
+            <label>Fade</label>
+            <select id="fade-select" class="fade-select" disabled>
               <option value="off">Off</option>
-              <option value="in">Fade In (ramp up)</option>
-              <option value="out">Fade Out (ramp down)</option>
-              <option value="pulse">Pulse (up then down)</option>
+              <option value="in">Fade In</option>
+              <option value="out">Fade Out</option>
+              <option value="pulse">Pulse</option>
             </select>
           </div>
         </div>
 
-        <!-- Timer -->
-        <div class="timer-section">
-          <div class="timer-display">
-            <button id="btn-timer-down" class="btn-icon" disabled>−</button>
-            <span id="timer-value" class="timer-value">10:00</span>
-            <button id="btn-timer-up" class="btn-icon" disabled>+</button>
-          </div>
-          <input type="range" id="timer-slider" min="1" max="60" value="10" disabled>
-        </div>
-
-        <!-- Intensity -->
-        <div class="intensity-section">
-          <label>Intensity <span id="intensity-value">8</span></label>
-          <input type="range" id="intensity-slider" min="0" max="9" value="8" disabled>
-          <div class="intensity-marks">
-            <span>1</span><span>5</span><span>9</span>
-          </div>
+        <!-- Timer Row -->
+        <div class="timer-row">
+          <button id="btn-timer-down" class="btn-icon" disabled>−</button>
+          <span id="timer-value" class="timer-value">10:00</span>
+          <input type="range" id="timer-slider" min="1" max="60" value="10" disabled class="timer-slider-inline">
+          <button id="btn-timer-up" class="btn-icon" disabled>+</button>
         </div>
 
         <!-- Breathing Guide (for respiratory-gated modes) -->
-        <div id="breathing-guide" class="breathing-guide hidden">
+        <div id="breathing-guide" class="breathing-guide compact hidden">
           <div class="breathing-circle" id="breathing-circle"></div>
           <div class="breathing-text" id="breathing-text">Inhale</div>
         </div>
@@ -150,14 +157,13 @@
         </div>
       </section>
 
-      <!-- Logs -->
+      <!-- Logs (collapsible, compact) -->
       <section class="panel panel-logs">
-        <details open>
-          <summary>Debug Logs</summary>
+        <details>
+          <summary>Logs</summary>
           <div class="log-toolbar">
             <button id="btn-clear-logs" class="btn btn-small">Clear</button>
-            <button id="btn-auto-scroll" class="btn btn-small active" title="Auto-scroll to new entries">⬇ Auto</button>
-            <button id="btn-expand-logs" class="btn btn-small" title="Toggle full height">↕ Expand</button>
+            <button id="btn-auto-scroll" class="btn btn-small active" title="Auto-scroll">⬇</button>
           </div>
           <div id="log-container" class="log-container"></div>
         </details>

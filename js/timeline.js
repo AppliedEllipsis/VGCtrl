@@ -269,6 +269,7 @@ class SessionTimeline {
       this.currentInstruction = instruction;
 
       // Notify app of script step change
+      // Note: isSeek=false for natural progression - app should NOT send commands
       if (this.onScriptStepCallback) {
         const step = {
           channel: instruction.channel,
@@ -276,7 +277,8 @@ class SessionTimeline {
           label: instruction.label,
           type: instruction.type,
           start: instruction.start,
-          end: instruction.end
+          end: instruction.end,
+          isSeek: false  // Natural progression, not user seek
         };
         this.onScriptStepCallback(step);
       }

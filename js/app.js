@@ -823,6 +823,7 @@ class PulsettoApp {
     }
 
     this.log(`Starting session: ${this.selectedMode}, ${this.timerMinutes}min, intensity ${this.baseStrength}`, 'info');
+    this.log(`  Channel override: ${this.channelOverride}`, 'info');
 
     // Initialize mode engine
     this.modeEngine = ModeEngineFactory.create(this.selectedMode);
@@ -836,7 +837,7 @@ class PulsettoApp {
         this.timeline.setMode(this.selectedMode, duration, this.baseStrength);
         this.timeline.updateProgress(0, true);
         // Start timeline tracking (visual only, no BLE commands)
-        this.timeline.startTracking(this.clock, this.channelOverride);
+        this.timeline.startTracking();
       });
     }
 
@@ -995,6 +996,7 @@ class PulsettoApp {
 
     // Only send commands on manual seek (not natural playback)
     if (step.isSeek) {
+      this.log(`  Seek applying: intensity=${step.intensity}, channel=${step.channel}`, 'info');
       if (step.intensity !== undefined && step.type !== 'rest') {
         this.setIntensity(step.intensity);
       }

@@ -1,4 +1,195 @@
 /**
+ * Command Queue Manager with Debouncing and Coalescing
+ * 
+ * - Debounces rapid command changes (e.g., slider dragging)
+ * - Coalesces channel+intensity combos (only sends latest)
+ * - Handles command sequences (channel → intensity → step)
+ * - Prioritizes urgent commands (stop)
+ */
+class CommandQueueManager {
+  constructor(bluetooth) {
+    this.bt = bluetooth;
+    
+    // Pending command state (coalescing)
+    this.pendingChannel = null;
+    this.pendingIntensity = null;
+    this.pendingStep = null;
+    
+    // Debounce timer
+    this.debounceTimer = null;
+    this.debounceDelay = 300; // ms to wait for changes to settle
+    
+    // Processing lock
+    this.isProcessing = false;
+    
+    // Last sent state (to avoid duplicates)
+    this.lastChannel = null;
+    this.lastIntensity = null;
+  }
+
+  // Queue a channel command (coalesces with pending intensity)
+  queueChannel(channelCmd) {
+    this.pendingChannel = channelCmd;
+    this._scheduleProcess();
+  }
+
+  // Queue an intensity command (coalesces with pending channel)
+  queueIntensity(intensityCmd) {
+    this.pendingIntensity = intensityCmd;
+    this._scheduleProcess();
+  }
+
+  // Queue a step command (sent after channel+intensity)
+  queueStep(stepCmd) {
+    this.pendingStep = stepCmd;
+    this._scheduleProcess();
+  }
+
+  // Send stop immediately (clears all pending, bypasses debounce)
+  async sendStop() {
+    // Clear everything
+    this._clearPending();
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    
+    // Send stop immediately
+    try {
+      await this.bt.sendCommandImmediate(PulsettoProtocol.Commands.stop);
+      this.lastChannel = null;
+      this.lastIntensity = null;
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  // Clear all pending commands
+  _clearPending() {
+    this.pendingChannel = null;
+    this.pendingIntensity = null;
+    this.pendingStep = null;
+  }
+
+  // Schedule processing after debounce delay
+  _scheduleProcess() {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+    
+    this.debounceTimer = setTimeout(() => {
+      this._processPending();
+    }, this.debounceDelay);
+  }
+
+  // Process the pending command combo
+  async _processPending() {
+    if (this.isProcessing) {
+      // Will be picked up after current processing
+      return;
+    }
+    
+    this.isProcessing = true;
+    this.debounceTimer = null;
+    
+    const channel = this.pendingChannel;
+    const intensity = this.pendingIntensity;
+    const step = this.pendingStep;
+    
+    // Clear pending so new changes can queue while we process
+    this._clearPending();
+    
+    // Build command sequence
+    const commands = [];
+    
+    // Channel first (if changed)
+    if (channel && channel !== this.lastChannel) {
+      commands.push(channel);
+    }
+    
+    // Intensity second (always send if we have it, or if channel changed)
+    if (intensity) {
+      commands.push(intensity);
+    } else if (channel && channel !== this.lastChannel && this.lastIntensity) {
+      // If channel changed but no new intensity, re-send last intensity
+      commands.push(this.lastIntensity);
+    }
+    
+    // Step commands last (ramp steps, etc.)
+    if (step) {
+      commands.push(step);
+    }
+    
+    // Execute commands with 2 second delays
+    for (const cmd of commands) {
+      try {
+        await this.bt.sendCommand(cmd);
+        
+        // Track what we sent
+        if (this._isChannelCmd(cmd)) {
+          this.lastChannel = cmd;
+        } else if (this._isIntensityCmd(cmd)) {
+          this.lastIntensity = cmd;
+        }
+        
+        // Delay before next command (unless stop or it's the last one)
+        if (cmd !== PulsettoProtocol.Commands.stop && cmd !== commands[commands.length - 1]) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (err) {
+        // Log but continue - next tick will retry if needed
+        console.warn('Command failed:', err.message);
+      }
+    }
+    
+    this.isProcessing = false;
+    
+    // If new commands came in while processing, schedule another run
+    if (this.pendingChannel || this.pendingIntensity || this.pendingStep) {
+      this._scheduleProcess();
+    }
+  }
+
+  _isChannelCmd(cmd) {
+    return cmd === PulsettoProtocol.Commands.activateLeft ||
+           cmd === PulsettoProtocol.Commands.activateRight ||
+           cmd === PulsettoProtocol.Commands.activateBilateral ||
+           cmd === PulsettoProtocol.Commands.stop;
+  }
+
+  _isIntensityCmd(cmd) {
+    return /^[1-9]\n$/.test(cmd);
+  }
+
+  // Force immediate send (for session start/resume)
+  async sendImmediate(commands) {
+    // Wait for any current processing
+    while (this.isProcessing) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    
+    this.isProcessing = true;
+    
+    for (const cmd of commands) {
+      try {
+        await this.bt.sendCommand(cmd);
+        if (this._isChannelCmd(cmd)) this.lastChannel = cmd;
+        if (this._isIntensityCmd(cmd)) this.lastIntensity = cmd;
+        
+        if (cmd !== commands[commands.length - 1]) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (err) {
+        console.warn('Immediate command failed:', err.message);
+      }
+    }
+    
+    this.isProcessing = false;
+  }
+}
+
+/**
  * Pulsetto Bluetooth Manager
  * 
  * Manages Web Bluetooth connection using ASCII protocol.

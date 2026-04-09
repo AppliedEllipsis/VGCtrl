@@ -237,6 +237,8 @@ class PulsettoApp {
     if (this.ui.btnFilterBattery) {
       this.ui.btnFilterBattery.classList.add('active');
     }
+    // Apply CSS filter class to hide battery messages by default
+    this.ui.logContainer.classList.add('filter-battery');
   }
 
   _bindEvents() {
@@ -1326,23 +1328,18 @@ class PulsettoApp {
           const percentage = PulsettoProtocol.Battery.calculatePercentage(parsed.value);
           this.ui.batteryLevel.textContent = `${percentage}%`;
           this.ui.batteryLevel.classList.remove('hidden');
-          if (!this.filterBatteryLogs) {
-            this.log(`Battery: ${parsed.value.toFixed(2)}V (${percentage}%)`, 'info');
-          }
+          // Always log to DOM - CSS filter controls visibility
+          this.log(`Battery: ${parsed.value.toFixed(2)}V (${percentage}%)`, 'info');
         }
         break;
 
       case PulsettoProtocol.ResponseType.chargingStatus:
         if (parsed.value === true) {
           this.ui.chargingIndicator.classList.remove('hidden');
-          if (!this.filterBatteryLogs) {
-            this.log('Charging: Yes', 'info');
-          }
+          this.log('Charging: Yes', 'info');
         } else if (parsed.value === false) {
           this.ui.chargingIndicator.classList.add('hidden');
-          if (!this.filterBatteryLogs) {
-            this.log('Charging: No', 'info');
-          }
+          this.log('Charging: No', 'info');
         }
         break;
         
@@ -1529,7 +1526,16 @@ class PulsettoApp {
   log(message, type = 'info', payload = null) {
     const time = new Date().toLocaleTimeString();
     const entry = document.createElement('div');
-    entry.className = 'log-entry';
+
+    // Detect battery messages for filtering
+    const isBatteryMessage = message.includes('Battery:') ||
+                              message.includes('Charging:') ||
+                              message.includes('battery');
+    const classes = ['log-entry'];
+    if (isBatteryMessage) {
+      classes.push('log-battery');
+    }
+    entry.className = classes.join(' ');
 
     let html = `<span class="log-time">${time}</span><span class="log-${type}">${message}</span>`;
 
@@ -1605,6 +1611,7 @@ class PulsettoApp {
   toggleBatteryFilter() {
     this.filterBatteryLogs = !this.filterBatteryLogs;
     this.ui.btnFilterBattery.classList.toggle('active', this.filterBatteryLogs);
+    this.ui.logContainer.classList.toggle('filter-battery', this.filterBatteryLogs);
     this.log(this.filterBatteryLogs ? 'Battery messages hidden' : 'Battery messages shown', 'info');
   }
 

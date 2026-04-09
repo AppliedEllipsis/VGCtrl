@@ -813,6 +813,11 @@ input[type="range"]:disabled {
   border-bottom: none;
 }
 
+/* Battery log filtering - entries hidden when filter is active */
+.log-container.filter-battery .log-entry.log-battery {
+  display: none;
+}
+
 .log-time {
   color: var(--color-text-muted);
   margin-right: 6px;

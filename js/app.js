@@ -22,6 +22,8 @@ class PulsettoApp {
     this.activeChannel = ActiveChannel.OFF;
     this.breathingPhase = null;
     this.channelOverride = 'auto'; // 'auto', 'left', 'right', 'bilateral'
+    this._isSeeking = false;
+    this._seekTimeout = null;
 
     // Logging state
     this.autoScroll = true;
@@ -89,10 +91,17 @@ class PulsettoApp {
       clearTimeout(this._seekTimeout);
     }
     
-    // Debounce seek operations to prevent GATT conflicts
+    // Debounce seek operations (300ms to match command queue debounce)
+    // This prevents rapid scrubbing from queuing overlapping command sequences
     this._seekTimeout = setTimeout(async () => {
-      await this._executeSeek(clamped, doneCallback);
-    }, 50);
+      // Set seeking flag to prevent mode engine ticks from queuing commands
+      this._isSeeking = true;
+      try {
+        await this._executeSeek(clamped, doneCallback);
+      } finally {
+        this._isSeeking = false;
+      }
+    }, 300);
   }
 
   async _executeSeek(clamped, doneCallback = null) {
@@ -125,6 +134,13 @@ class PulsettoApp {
       }
       
       if (commands.length > 0) {
+        // Wait for any pending/in-flight commands to complete before seeking
+        // This prevents interleaving seek commands with ongoing sequences
+        await this.ble.waitForCommandsComplete(5000);
+        
+        // Clear any remaining pending commands (just in case)
+        this.ble.clearCommandQueue();
+        
         // Send seek commands with standard 2s delays between them
         for (const cmd of commands) {
           await this.ble.sendCommand(cmd);
@@ -675,6 +691,9 @@ class PulsettoApp {
 
   // Mode engine tick processing
   _processModeTick(elapsed) {
+    // Skip if currently seeking - seek will send its own commands
+    if (this._isSeeking) return;
+    
     const result = this.modeEngine.tick(
       elapsed,
       this.clock.totalDuration,

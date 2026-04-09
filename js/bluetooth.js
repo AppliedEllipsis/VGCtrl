@@ -185,6 +185,18 @@ class CommandQueueManager {
     this.lastIntensity = null;
   }
 
+  // Wait for any pending commands to complete processing (returns true if something was processed)
+  async waitForComplete(timeoutMs = 30000) {
+    const start = Date.now();
+    
+    // Wait for debounce timer to fire and processing to complete
+    while ((this.debounceTimer || this.isProcessing) && (Date.now() - start < timeoutMs)) {
+      await new Promise(r => setTimeout(r, 50));
+    }
+    
+    return !this.debounceTimer && !this.isProcessing;
+  }
+
   // Force immediate send (for session start/resume) - 2s delays between commands
   async sendImmediate(commands) {
     // Wait for any current processing
@@ -499,6 +511,11 @@ class PulsettoBluetooth {
   // Clear command manager state
   clearCommandQueue() {
     this.commandManager._clearPending();
+  }
+
+  // Wait for all pending commands to complete
+  async waitForCommandsComplete(timeoutMs = 30000) {
+    return this.commandManager.waitForComplete(timeoutMs);
   }
 
   // Wait for response

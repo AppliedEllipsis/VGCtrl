@@ -1,7 +1,7 @@
 {
-  "name": "Pulsetto Web Controller",
-  "short_name": "Pulsetto",
-  "description": "Control your Pulsetto device via Web Bluetooth",
+  "name": "VG Ctrl",
+  "short_name": "VGCtrl",
+  "description": "Control vagus nerve stimulator devices via Web Bluetooth",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0d1117",

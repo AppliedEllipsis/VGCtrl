@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * HTTPS Server for Pulsetto Web App
+ * HTTPS Server for VG Ctrl Web App
  * 
  * Serves the app with HTTPS (required for Web Bluetooth API)
  * Auto-detects local IP and shows clickable terminal links
@@ -258,3 +258,4 @@ function startServer() {
 }
 
 startServer();
+;

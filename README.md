@@ -1,11 +1,14 @@
-# Pulsetto Web Controller
+# VG Ctrl
 
-A vanilla JavaScript single-page application (SPA) for controlling Pulsetto vagus nerve stimulation devices via Web Bluetooth API.
+A vanilla JavaScript single-page application (SPA) for controlling vagus nerve stimulation devices via Web Bluetooth API.
+
+**Live:** https://vgctrl.rd.to or https://vg.rd.to  
+**Source:** https://github.com/AppliedEllipsis/VGCtrl
 
 ## Features
 
 ### Core Functionality
-- **Device Connection**: Scan and connect to Pulsetto devices via Web Bluetooth
+- **Device Connection**: Scan and connect to vagus nerve stimulator devices via Web Bluetooth
 - **Session Management**: Start, pause, resume, and stop stimulation sessions
 - **8 Stimulation Modes**: Stress Relief, Sleep, Focus, Pain Relief, Calm, Headache, Nausea, Meditation
 - **Intensity Control**: Adjust stimulation intensity (levels 1-9)
@@ -69,7 +72,7 @@ Browsers aggressively throttle, suspend, or terminate background tabs to save ba
 ## File Structure
 
 ```
-pulsetto-web/
+vgctrl/
 ├── index.html               # Main HTML structure
 ├── style.css                # Dark theme styling
 ├── manifest.json            # PWA manifest
@@ -90,7 +93,7 @@ pulsetto-web/
 ### Requirements
 - Chrome/Edge/Opera with Web Bluetooth support (Chrome 56+, Edge 79+)
 - HTTPS connection (required for Web Bluetooth)
-- Pulsetto device with Nordic UART Service BLE support
+- Vagus nerve stimulator device with Nordic UART Service BLE support
 
 ### Running Locally
 
@@ -164,7 +167,7 @@ npx ngrok http 8080
 
 2. Open the URL in Chrome/Edge (HTTPS required for Web Bluetooth)
 
-3. Click "Scan for Device" and select your Pulsetto device
+3. Click "Scan for Device" and select your device
 
 ### Protocol Reference
 

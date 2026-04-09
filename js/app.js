@@ -1,5 +1,5 @@
 /**
- * Pulsetto Web Controller Application
+ * VG Ctrl Application
  * 
  * Main application that coordinates BLE connection, session clock,
  * and mode engines. Handles background/foreground transitions.
@@ -76,7 +76,7 @@ class PulsettoApp {
       this.ui.audioToggle.checked = this.audioEnabled;
     }
 
-    this.log('Pulsetto Web Controller initialized (ASCII protocol)', 'info');
+    this.log('VG Ctrl initialized (ASCII protocol)', 'info');
     this.log('Click "Scan for Device" to connect', 'info');
     this.log('Using ASCII protocol (verified with official app v2.2.91)', 'info');
   }

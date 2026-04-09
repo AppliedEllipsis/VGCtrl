@@ -66,6 +66,19 @@ body {
   color: var(--color-text-muted);
 }
 
+.github-link {
+  margin-left: auto;
+  margin-right: 8px;
+  color: var(--color-text-muted);
+  transition: color var(--transition);
+  display: flex;
+  align-items: center;
+}
+
+.github-link:hover {
+  color: var(--color-primary);
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -1037,4 +1050,67 @@ input[type="range"]:disabled {
   .legend-color { width: 8px; height: 8px; }
   .action-buttons { flex-wrap: wrap; }
   .btn-action { min-width: calc(50% - 4px); padding: 8px; }
+}
+
+/* Donate Footer */
+.panel-donate {
+  background: transparent;
+  border: none;
+  padding: 12px 0;
+  text-align: center;
+}
+
+.donate-text {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btc-address {
+  font-family: monospace;
+  font-size: 0.6875rem;
+  background: var(--color-surface);
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.btc-address:hover {
+  background: var(--color-surface-raised);
+}
+
+.btn-copy {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 2px 4px;
+  opacity: 0.7;
+  transition: opacity var(--transition);
+}
+
+.btn-copy:hover {
+  opacity: 1;
+}
+
+.github-text {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+.github-text a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.github-text a:hover {
+  text-decoration: underline;
 }

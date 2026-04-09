@@ -5,6 +5,26 @@ A vanilla JavaScript single-page application (SPA) for controlling vagus nerve s
 **Live:** https://vgctrl.rd.to or https://vg.rd.to  
 **Source:** https://github.com/AppliedEllipsis/VGCtrl
 
+---
+
+## ⚠️ Medical Disclaimer
+
+**THIS IS NOT MEDICAL ADVICE. USE AT YOUR OWN RISK.**
+
+- This application is for **experimental and educational purposes only**
+- Not evaluated by any medical regulatory authority (FDA, CE, etc.)
+- Not intended to diagnose, treat, cure, or prevent any disease
+- Suggestions, modes, and configurations are based on **trial and error, observation, and community experimentation** — **not necessarily peer-reviewed science**
+- Vagus nerve stimulation affects individuals differently; effects vary significantly
+- **Consult a qualified healthcare professional** before use, especially if you have:
+  - Heart conditions, epilepsy, or seizure disorders
+  - Implanted medical devices (pacemakers, etc.)
+  - Are pregnant, or have other medical conditions
+- Stop immediately if you experience pain, dizziness, irregular heartbeat, or any adverse effects
+- **You assume full responsibility** for any consequences of using this software
+
+---
+
 ## Features
 
 ### Core Functionality

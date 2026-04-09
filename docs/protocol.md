@@ -6,6 +6,18 @@
 
 ---
 
+## ⚠️ Disclaimer
+
+**THIS DOCUMENTATION IS FOR EDUCATIONAL AND EXPERIMENTAL PURPOSES ONLY.**
+
+- This protocol analysis was conducted via reverse engineering for interoperability
+- Any implementations based on this documentation are **use at your own risk**
+- Technical observations, timing recommendations, and usage patterns documented here are based on **trial and error, community experimentation, and reverse engineering** — **not peer-reviewed scientific studies**
+- The authors make no claims about safety, efficacy, or medical validity
+- **Not medical advice.** Consult healthcare professionals before using vagus nerve stimulation devices
+
+---
+
 ## Overview
 
 The Pulsetto device uses a simple **ASCII-based command protocol** over Nordic UART Service. This is a text-based protocol where commands are single characters terminated with a newline (`\n`, hex `0x0A`).

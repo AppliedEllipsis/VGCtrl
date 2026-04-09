@@ -69,6 +69,7 @@ class SessionTimeline {
       <div class="timeline-container">
         <div class="timeline-header">
           <span class="timeline-title">Session Script</span>
+          <span class="timeline-phase-countdown hidden">Next: --s</span>
           <span class="timeline-position">00:00 / 00:00</span>
         </div>
         <div class="timeline-canvas-wrapper">

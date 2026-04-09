@@ -437,7 +437,7 @@ class PulsettoApp {
       this._sendStopCommand();
       
       // Play completion sound after stop commands
-      this.playCompletionSound();
+      await this.playCompletionSound();
       
       this._updateActionButtons();
       this._resetSessionUI();
@@ -858,6 +858,16 @@ class PulsettoApp {
       return;
     }
 
+    // Ensure audio context is ready (browsers require user interaction)
+    if (this.bgKeepalive?.audioContext?.state === 'suspended') {
+      try {
+        await this.bgKeepalive.audioContext.resume();
+        console.log('[Audio] Context resumed on session start');
+      } catch (e) {
+        console.warn('[Audio] Could not resume on start:', e);
+      }
+    }
+
     this.log(`=== START SESSION ===`, 'info');
     this.log(`selectedMode: ${this.selectedMode}`, 'info');
     this.log(`channelOverride: ${this.channelOverride}`, 'info');
@@ -1032,10 +1042,21 @@ class PulsettoApp {
   }
 
   // Audio feedback methods using Web Audio API
-  _playTone(frequency, duration, type = 'sine', gainValue = 0.1) {
+  async _playTone(frequency, duration, type = 'sine', gainValue = 0.1) {
     if (!this.audioEnabled) return;
-    const ctx = this.bgKeepalive?.audioContext;
-    if (!ctx || ctx.state === 'suspended') return;
+    let ctx = this.bgKeepalive?.audioContext;
+    if (!ctx) return;
+
+    // Try to resume if suspended (browsers require user interaction)
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+        console.log('[Audio] Context resumed');
+      } catch (e) {
+        console.warn('[Audio] Could not resume context:', e);
+        return;
+      }
+    }
 
     try {
       const osc = ctx.createOscillator();
@@ -1058,24 +1079,24 @@ class PulsettoApp {
     }
   }
 
-  playPhaseSound() {
+  async playPhaseSound() {
     // Two-tone ascending chime for phase changes (440Hz -> 660Hz)
     // Louder (0.2 gain), longer (200ms per tone), with harmonic overtone
-    this._playTone(440, 200, 'sine', 0.2);
+    await this._playTone(440, 200, 'sine', 0.2);
     setTimeout(() => this._playTone(660, 250, 'sine', 0.25), 180);
     console.log('[Audio] Phase change sound');
   }
 
-  playPhaseWarningSound() {
+  async playPhaseWarningSound() {
     // Warning tone before phase change - distinct from phase change sound
     // Single higher-pitch beep (880Hz) to alert user change is coming
-    this._playTone(880, 150, 'sine', 0.15);
+    await this._playTone(880, 150, 'sine', 0.15);
     console.log('[Audio] Phase warning sound');
   }
 
-  playCompletionSound() {
+  async playCompletionSound() {
     // Two-tone ascending chime (440Hz then 880Hz)
-    this._playTone(440, 150, 'sine');
+    await this._playTone(440, 150, 'sine');
     setTimeout(() => this._playTone(880, 300, 'sine'), 160);
     console.log('[Audio] Completion chime');
   }
@@ -1121,14 +1142,14 @@ class PulsettoApp {
    * Format: { channel, intensity, label, type, start, end, isSeek? }
    * Only triggers commands on manual seek (isSeek=true), not natural progression.
    */
-  _onTimelineScriptStep(step) {
+  async _onTimelineScriptStep(step) {
     const isActive = this.clock.isRunning || this.clock.isPaused;
     if (!isActive) return;
 
     // Handle phase warning (3 seconds before change)
     if (step.type === 'phase-warning') {
       this.log(`  [Warning] Phase change in ${step.timeUntilChange}s`, 'info');
-      this.playPhaseWarningSound();
+      await this.playPhaseWarningSound();
       return;
     }
 
@@ -1168,7 +1189,7 @@ class PulsettoApp {
     } else if (!step.isFadeUpdate) {
       // Natural phase transition (not fade intensity update)
       this.log(`  [Phase] Natural transition to: ${step.label}, intensity=${step.intensity}, channel=${step.channel}`, 'info');
-      this.playPhaseSound();
+      await this.playPhaseSound();
       if (shouldSendIntensity) this.setIntensity(step.intensity);
       if (shouldSendChannel) this.setChannelOverride(step.channel);
     } else if (step.isFadeUpdate && step.intensity !== undefined) {

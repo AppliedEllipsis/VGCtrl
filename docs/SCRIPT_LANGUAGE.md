@@ -6,7 +6,7 @@
 
 Think of a script like a recipe for your device. It tells the device:
 1. **When** to turn on/off
-2. **How strong** to stimulate (1-9)
+2. **How strong** to stimulate (0-9 device levels)
 3. **Which side(s)** (left, right, or both)
 4. **How long** to wait between changes
 
@@ -16,16 +16,16 @@ The device reads your script from top to bottom, doing what you tell it, then re
 
 ```
 [Focus Left]
-mode(100%, left)
+mode(7, left)
 wait(30s)
-mode(0%, off)
+mode(0)
 wait(30s)
 ```
 
 What happens:
-1. Turn on at user's chosen intensity, left side only
+1. Turn on at device level 7, left side only
 2. Wait 30 seconds
-3. Turn off
+3. Turn off (zero = stop, channel ignored)
 4. Wait 30 seconds
 5. Stop (we didn't say to repeat!)
 
@@ -34,9 +34,9 @@ What happens:
 ```
 [Focus Left]
 repeat(cycle)
-  mode(100%, left)
+  mode(7, left)
   wait(30s)
-  mode(0%, off)
+  mode(0)
   wait(30s)
 end
 ```
@@ -56,9 +56,9 @@ The channel parameter is optional and defaults to `both`. Use `off` or `none` wh
 
 Examples:
 - `mode(5)` or `mode(5, both)` - Device level 5 on both sides (implicit both)
-- `mode(100%, left)` - User's chosen intensity, left only
-- `mode(0%)` or `mode(0%, off)` - Stop (no channel specified = both in UX)
-- `mode(0%, none)` - Stop with explicit "none" direction (maps to "both" in UX)
+- `mode(7, left)` - Device level 7, left side only
+- `mode(0)` - Stop (zero means off, channel shows as "both" in UX)
+- `mode(0, none)` - Stop with explicit "none" direction (still shows "both" in UX)
 
 ### `wait(time)` - Do Nothing
 - **time**: `30s` (seconds), `1m` (minutes), `10%` (percent of session), or `session` (all remaining time)
@@ -74,8 +74,9 @@ Smoothly changes intensity over time.
 - **to**: Target intensity (1-9 or %)
 - **over**: How long to take (30s, 10%, etc.)
 
-Example:
-- `fade(50%, 20s)` - Fade to half intensity over 20 seconds
+Examples:
+- `fade(4, 20s)` - Fade to device level 4 over 20 seconds
+- `fade(0, 10s)` - Fade to stop over 10 seconds
 
 ### `repeat(type)` and `end` - Looping
 Makes a section repeat.
@@ -85,9 +86,9 @@ Makes a section repeat.
 Example with cycle:
 ```
 repeat(cycle)
-  mode(100%, both)
+  mode(7, both)
   wait(30s)
-  mode(0%, off)
+  mode(0)
   wait(30s)
 end
 ```
@@ -96,11 +97,11 @@ Example with stretch (fits 3 loops into session):
 ```
 [Stress Relief]
 repeat(stretch)
-  mode(100%, both)
+  mode(7, both)
   wait(20s)
-  mode(80%, both)
+  mode(5, both)
   wait(20s)
-  mode(60%, both)
+  mode(3, both)
   wait(20s)
 end
 # If session is 3 minutes, each "20s" becomes ~33s to fit exactly
@@ -167,9 +168,9 @@ Lines starting with `#` are ignored. Use them to explain your script!
 [Focus Alt]
 # This mode cycles through different sides
 repeat(cycle)
-  mode(100%, both)   # Start with both sides
+  mode(7, both)   # Start with both sides at level 7
   wait(30s)
-  mode(0%, off)       # Rest period
+  mode(0)         # Rest period (zero = off)
   wait(15s)
 end
 ```
@@ -179,7 +180,7 @@ end
 Use semicolons to put multiple commands on one line:
 
 ```
-mode(100%, both); wait(30s); mode(0%, off)
+mode(7, both); wait(30s); mode(0)
 ```
 
 Need a literal semicolon? Escape it:
@@ -192,7 +193,7 @@ Need a literal semicolon? Escape it:
 
 | Mistake | What Happens | Fix |
 |---------|--------------|-----|
-| `mode()` | Error - need intensity | Add intensity like `mode(5)` |
+| `mode()` | Error - need intensity | Add device level like `mode(5)` |
 | `mode(5, both` | Error - missing `)` | Add closing paren |
 | `wait()` | Error - need time | Add `30s` etc |
 | `repeat(cycle)` with no `end` | Error - unclosed loop | Add `end` |
@@ -228,9 +229,9 @@ Example:
 ```
 [Example]
 repeat(stretch)
-  mode(100%, both)
+  mode(7, both)
   wait(10s)
-  mode(50%, both)
+  mode(3, both)
   wait(10s)
 end
 ```

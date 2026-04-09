@@ -1279,10 +1279,11 @@ class PulsettoApp {
     // Update UI display for all steps
     if (step.intensity !== undefined) {
       this.ui.intensityValue.textContent = step.intensity;
-      // Note: We intentionally do NOT update the slider value from script steps.
-      // The slider represents the user's manual setting; script intensity is displayed
-      // in the text badge. This allows users to override script intensity without
-      // the slider snapping back every second.
+      // Only update slider on phase changes or manual seek, not every tick
+      // This allows user to override intensity without slider fighting back
+      if (step.isSeek || step.isPhaseChange) {
+        this.ui.intensitySlider.value = step.intensity;
+      }
       this.baseStrength = step.intensity;
     }
 

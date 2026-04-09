@@ -404,11 +404,16 @@ class SessionTimeline {
     const progress = this.state.elapsed / this.state.totalDuration;
     const x = progress * this.width;
 
-    // Get current intensity and channel for tooltip
+    // Get current intensity and channel from state manager (applies override if set)
     let currentIntensity = this.state.baseStrength;
     let currentChannel = 'off';
 
-    if (this.modeEngine) {
+    const expectedState = this.getExpectedState();
+    if (expectedState) {
+      currentIntensity = expectedState.intensity || this.state.baseStrength;
+      currentChannel = expectedState.channel || 'off';
+    } else if (this.modeEngine) {
+      // Fallback to mode engine if state manager not yet initialized
       const result = this.modeEngine.tick(
         this.state.elapsed,
         this.state.totalDuration,
@@ -427,11 +432,16 @@ class SessionTimeline {
   }
 
   _updatePositionDisplay() {
-    // Get current intensity from mode engine or base strength
+    // Get current intensity and channel from state manager (applies override if set)
     let currentIntensity = this.state.baseStrength;
     let currentChannel = 'off';
 
-    if (this.modeEngine && this.state.totalDuration > 0) {
+    const expectedState = this.getExpectedState();
+    if (expectedState) {
+      currentIntensity = expectedState.intensity || this.state.baseStrength;
+      currentChannel = expectedState.channel || 'off';
+    } else if (this.modeEngine && this.state.totalDuration > 0) {
+      // Fallback to mode engine if state manager not yet initialized
       const result = this.modeEngine.tick(
         this.state.elapsed,
         this.state.totalDuration,

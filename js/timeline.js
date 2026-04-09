@@ -33,8 +33,9 @@ class SessionTimeline {
     this.scrubbing = false;
     this.seeking = false;  // Track when a seek operation is in progress
     this.onScrubCallback = null;
+    this.onPhaseChangeCallback = null;
 
-    // State manager for tracking expected device state
+    // State manager for tracking expected device state (visual only, no commands)
     this.stateManager = null;
 
     this._init();
@@ -284,18 +285,15 @@ class SessionTimeline {
 
   /**
    * Start timeline tracking with state manager
+   * Timeline is visual only - no BLE commands are sent.
+   * Phase changes trigger UI updates via onPhaseChange callback.
    */
-  startTracking(ble, clock, channelOverride = 'auto') {
-    // Initialize state manager with command scheduling config
+  startTracking(clock, channelOverride = 'auto') {
+    // Initialize state manager (visual tracking only, no BLE)
     this.stateManager = new TimelineStateManager({
-      ble: ble,
       clock: clock,
       channelOverride: channelOverride,
-      tickIntervalMs: 5000,        // Tick every 5 seconds since last command
-      transitionWindowMs: 3000,      // Defer if transition within 3 seconds
-      minCommandSpacingMs: 2000,   // 2 seconds between commands
-      onStateChange: (change) => this._onStateChange(change),
-      onCommandScheduled: (data) => this._onCommandScheduled(data)
+      onStateChange: (change) => this._onStateChange(change)
     });
 
     this.stateManager.start(this.state.mode, this.state.totalDuration, this.state.baseStrength);
@@ -373,13 +371,18 @@ class SessionTimeline {
   }
 
   _onStateChange(change) {
-    // Visual feedback for state changes could go here
+    // Phase change detected - notify app to update UI controls (no commands sent)
+    if (change.type === 'phase' || change.type === 'seek') {
+      const expected = change.current;
+      if (this.onPhaseChangeCallback) {
+        this.onPhaseChangeCallback({
+          channel: expected.channel,
+          intensity: expected.intensity,
+          phase: change.type
+        });
+      }
+    }
     console.log('[Timeline] State change:', change);
-  }
-
-  _onCommandScheduled(data) {
-    // Visual feedback for scheduled commands could go here
-    // console.log('[Timeline] Command scheduled:', data);
   }
 
   updateProgress(elapsed, isPlaying = true) {
@@ -485,6 +488,15 @@ class SessionTimeline {
 
   onScrub(callback) {
     this.onScrubCallback = callback;
+  }
+
+  /**
+   * Register callback for phase changes
+   * Callback receives: { channel, intensity, phase }
+   * This is for UI updates only - timeline does not send commands
+   */
+  onPhaseChange(callback) {
+    this.onPhaseChangeCallback = callback;
   }
 
   render() {
@@ -943,6 +955,11 @@ class SessionTimeline {
   destroy() {
     this.container.innerHTML = '';
     this.onScrubCallback = null;
+    this.onPhaseChangeCallback = null;
+    if (this.stateManager) {
+      this.stateManager.destroy();
+      this.stateManager = null;
+    }
   }
 }
 

@@ -78,11 +78,15 @@ class PulsettoApp {
       scrubEnabled: true,
       showLabels: true
     });
-    
+
     // Handle timeline scrubbing (seeking)
-    // The callback receives (elapsed, doneCallback) - doneCallback must be called when seek is complete
     this.timeline.onScrub((newElapsed, doneCallback) => {
       this._seekSession(newElapsed, doneCallback);
+    });
+
+    // Handle timeline phase changes (UI preset updates only, no commands)
+    this.timeline.onPhaseChange((preset) => {
+      this._onTimelinePhaseChange(preset);
     });
   }
 
@@ -127,14 +131,7 @@ class PulsettoApp {
     this.clock.elapsedSeconds = clamped;
     this.clock.remainingSeconds = this.clock.totalDuration - clamped;
 
-    // Wait for pending commands to complete, then clear queue
-    if (this.ble.canSendCommands) {
-      await this.ble.waitForCommandsComplete(5000);
-      this.ble.clearCommandQueue();
-    }
-    
-    // Notify timeline state manager of seek - it will calculate expected state 
-    // and send correction commands (respecting channel override internally)
+    // Notify timeline of seek - it will update expected state and notify via onPhaseChange
     if (this.timeline) {
       this.timeline.seek(clamped);
       this.log(`Seek: ${this._formatTime(clamped)}`, 'info');
@@ -507,7 +504,7 @@ class PulsettoApp {
     this.log(`Mode selected: ${description.name}`, 'info');
   }
 
-  setChannelOverride(channel) {
+  async setChannelOverride(channel) {
     this.channelOverride = channel;
 
     // Update button states
@@ -515,17 +512,31 @@ class PulsettoApp {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === channel);
     });
 
-    // Notify timeline state manager of channel override
+    // Notify timeline of override (visual only)
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
     if (sessionActive && this.timeline) {
       this.timeline.setChannelOverride(channel);
     }
 
-    // Log the change (actual commands sent by state manager)
-    if (sessionActive) {
-      this.log(`Channel: ${channel}`, 'info');
+    // Send command directly to device (timeline is visual-only now)
+    if (sessionActive && this.ble?.canSendCommands) {
+      let cmd = null;
+      switch (channel) {
+        case 'left': cmd = PulsettoProtocol.Commands.activateLeft; break;
+        case 'right': cmd = PulsettoProtocol.Commands.activateRight; break;
+        case 'bilateral': cmd = PulsettoProtocol.Commands.activateBilateral; break;
+        case 'off': cmd = PulsettoProtocol.Commands.stop; break;
+      }
+      if (cmd) {
+        try {
+          await this.ble.sendCommand(cmd);
+          this.log(`Channel: ${channel}`, 'info');
+        } catch (err) {
+          this.log(`Failed to set channel: ${err.message}`, 'error');
+        }
+      }
     } else {
-      this.log(`Channel: ${channel} (${sessionActive ? 'will apply on resume' : 'ready'})`, 'info');
+      this.log(`Channel: ${channel} (ready)`, 'info');
     }
   }
 
@@ -772,7 +783,7 @@ class PulsettoApp {
     this.ui.timerSlider.value = this.timerMinutes;
   }
 
-  setIntensity(value) {
+  async setIntensity(value) {
     // If fade is executing and value matches what fade just set, it's a programmatic update - skip
     if (this._fadeExecuting && value === this._lastFadeIntensity) {
       this.baseStrength = value;
@@ -788,10 +799,20 @@ class PulsettoApp {
       this._cancelFade();
     }
 
-    // Notify timeline state manager of intensity change (handles command queuing)
+    // Notify timeline of intensity change (visual only)
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
     if (sessionActive && this.timeline) {
       this.timeline.setIntensity(value);
+    }
+
+    // Send command directly to device (timeline is visual-only now)
+    if (sessionActive && this.ble?.canSendCommands) {
+      try {
+        const cmd = PulsettoProtocol.Commands.intensity(value);
+        await this.ble.sendCommand(cmd);
+      } catch (err) {
+        this.log(`Failed to set intensity: ${err.message}`, 'error');
+      }
     }
   }
 
@@ -814,8 +835,8 @@ class PulsettoApp {
       requestAnimationFrame(() => {
         this.timeline.setMode(this.selectedMode, duration, this.baseStrength);
         this.timeline.updateProgress(0, true);
-        // Start timeline state tracking with heartbeat
-        this.timeline.startTracking(this.ble, this.clock, this.channelOverride);
+        // Start timeline tracking (visual only, no BLE commands)
+        this.timeline.startTracking(this.clock, this.channelOverride);
       });
     }
 
@@ -935,6 +956,41 @@ class PulsettoApp {
     
     // Update breathing UI
     this._updateBreathingAnimation(result);
+  }
+
+  /**
+   * Handle timeline phase change - update UI controls to reflect preset
+   * Timeline is visual only; no commands are sent here.
+   * User must manually adjust or confirm settings.
+   */
+  _onTimelinePhaseChange(preset) {
+    // Update intensity slider display (don't send command)
+    if (preset.intensity !== undefined) {
+      this.ui.intensityValue.textContent = preset.intensity;
+      this.ui.intensitySlider.value = preset.intensity;
+      this.baseStrength = preset.intensity;
+    }
+
+    // Update channel button states (don't send command)
+    if (preset.channel) {
+      [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+        if (btn) btn.classList.remove('active');
+      });
+
+      let activeBtn = null;
+      switch (preset.channel) {
+        case 'left': activeBtn = this.ui.channelLeft; break;
+        case 'right': activeBtn = this.ui.channelRight; break;
+        case 'bilateral': activeBtn = this.ui.channelBoth; break;
+        default: activeBtn = this.ui.channelAuto;
+      }
+      if (activeBtn) activeBtn.classList.add('active');
+
+      // Log the preset (user can manually apply)
+      if (preset.phase === 'phase' || preset.phase === 'seek') {
+        this.log(`Timeline preset: ${preset.channel}, intensity ${preset.intensity}`, 'info');
+      }
+    }
   }
 
   _resumeSessionOnDevice() {

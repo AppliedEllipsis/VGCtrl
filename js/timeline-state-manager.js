@@ -1,64 +1,54 @@
 /**
- * Timeline State Manager
+ * Timeline State Manager (Visual Only)
  *
- * Manages expected device state based on:
+ * Tracks expected device state for the timeline visualization.
+ * Does NOT send commands to the device - purely informational.
+ *
+ * State tracking:
  * 1. Timeline zones (from mode engine) - defines expected channel at time T
  * 2. Channel override - user can override the timeline's expected channel
- *
- * Command Scheduler:
- * - Ticks every 5 seconds since last command
- * - Calculates expected state: mode engine state + channel override
- * - If next transition is within 3 seconds, wait and batch with that transition
- * - Sends commands to make device match expected state
+ * 3. On phase changes, notifies via onStateChange callback (for UI updates)
  */
 
 class TimelineStateManager {
   constructor(options = {}) {
-    this.ble = options.ble;
     this.clock = options.clock;
     this.modeEngine = null;
 
     // Configuration
-    this.tickIntervalMs = options.tickIntervalMs || 5000; // 5 second base tick
-    this.transitionWindowMs = options.transitionWindowMs || 3000; // 3 second defer window
-    this.minCommandSpacingMs = options.minCommandSpacingMs || 2000; // 2s between commands
+    this.tickIntervalMs = options.tickIntervalMs || 1000; // Update every second for display
 
     // State
     this.isRunning = false;
-    this.lastCommandTime = 0;
-    this.nextScheduledTick = null;
     this.tickTimer = null;
-    this.pendingTransition = null;
+    this.totalDuration = 0;
+    this.baseStrength = 8;
 
-    // Current expected state (what we want the device to be)
+    // Current expected state (what the timeline expects at current time)
     this.expectedState = {
-      channel: 'off',      // 'off', 'left', 'right', 'bilateral'
-      intensity: 0,        // 0-9
-      channelOverride: options.channelOverride || 'auto', // 'auto', 'left', 'right', 'bilateral'
+      channel: 'off',
+      intensity: 0,
+      channelOverride: options.channelOverride || 'auto',
       lastUpdateTime: 0
-    };
-
-    // Track what we last sent (to avoid redundant commands)
-    this.lastSentState = {
-      channel: null,
-      intensity: null
     };
 
     // Callbacks
     this.onStateChange = options.onStateChange || null;
-    this.onCommandScheduled = options.onCommandScheduled || null;
+
+    // Track previous state for change detection
+    this._previousChannel = null;
+    this._previousIntensity = null;
 
     // Bind methods
-    this._scheduleNextTick = this._scheduleNextTick.bind(this);
-    this._executeTick = this._executeTick.bind(this);
+    this._tick = this._tick.bind(this);
   }
 
   /**
-   * Start tracking and command scheduling
+   * Start tracking
    */
   start(mode, totalDuration, baseStrength) {
-    if (!this.ble || !this.clock) {
-      console.error('[TimelineStateManager] Missing BLE or clock reference');
+    if (!this.clock) {
+      console.error('[TimelineStateManager] Missing clock reference');
       return;
     }
 
@@ -66,16 +56,14 @@ class TimelineStateManager {
     this.totalDuration = totalDuration;
     this.baseStrength = baseStrength;
     this.isRunning = true;
-    this.lastCommandTime = 0;
 
     // Initialize expected state from mode engine at time 0
-    this._updateExpectedStateFromEngine(0);
+    this._updateExpectedState(0);
+    this._previousChannel = this.expectedState.channel;
+    this._previousIntensity = this.expectedState.intensity;
 
-    // Send initial commands immediately
-    this._executeTick(true); // true = initial (no deferral)
-
-    // Schedule first regular tick
-    this._scheduleNextTick();
+    // Start ticking
+    this._tick();
 
     console.log('[TimelineStateManager] Started', { mode, totalDuration, baseStrength });
   }
@@ -85,25 +73,22 @@ class TimelineStateManager {
    */
   stop() {
     this.isRunning = false;
-    this._clearTickTimer();
+    if (this.tickTimer) {
+      clearTimeout(this.tickTimer);
+      this.tickTimer = null;
+    }
     this.modeEngine = null;
-    this.pendingTransition = null;
-
-    this.expectedState = {
-      channel: 'off',
-      intensity: 0,
-      channelOverride: 'auto',
-      lastUpdateTime: 0
-    };
-
     console.log('[TimelineStateManager] Stopped');
   }
 
   /**
-   * Pause (stop ticks, preserve state)
+   * Pause (stop ticks)
    */
   pause() {
-    this._clearTickTimer();
+    if (this.tickTimer) {
+      clearTimeout(this.tickTimer);
+      this.tickTimer = null;
+    }
   }
 
   /**
@@ -111,22 +96,21 @@ class TimelineStateManager {
    */
   resume() {
     if (this.isRunning) {
-      this._scheduleNextTick();
+      this._tick();
     }
   }
 
   /**
-   * Seek to new position - recalculate and send commands immediately
+   * Seek to new position - update expected state and notify
    */
   seek(elapsedSeconds) {
     if (!this.isRunning || !this.modeEngine) return;
 
-    // Update expected state at new position
     const oldState = { ...this.expectedState };
-    this._updateExpectedStateFromEngine(elapsedSeconds);
+    this._updateExpectedState(elapsedSeconds);
 
-    // Notify state change
-    if (this._stateChanged(oldState, this.expectedState) && this.onStateChange) {
+    // Always notify on seek (user jumped to new phase)
+    if (this.onStateChange) {
       this.onStateChange({
         previous: oldState,
         current: { ...this.expectedState },
@@ -135,20 +119,14 @@ class TimelineStateManager {
       });
     }
 
-    // Note: Seek updates expected state but does NOT send commands immediately.
-    // The periodic keepalive tick will sync the device state when it fires.
-    // Reset lastSentState so the next periodic tick will send if state differs.
-    this.lastSentState = { channel: null, intensity: null };
+    this._previousChannel = this.expectedState.channel;
+    this._previousIntensity = this.expectedState.intensity;
 
-    // Reset tick scheduling from now
-    this.lastCommandTime = Date.now();
-    this._scheduleNextTick();
-
-    console.log('[TimelineStateManager] Seek to', elapsedSeconds, this.expectedState, '(state only, commands deferred to periodic tick)');
+    console.log('[TimelineStateManager] Seek to', elapsedSeconds, this.expectedState);
   }
 
   /**
-   * Notify of external channel override change
+   * Set channel override
    */
   setChannelOverride(override) {
     const oldState = { ...this.expectedState };
@@ -156,11 +134,10 @@ class TimelineStateManager {
 
     // Recalculate effective channel
     this._recalculateEffectiveChannel();
-
     this.expectedState.lastUpdateTime = Date.now();
 
     // Notify state change
-    if (this._stateChanged(oldState, this.expectedState) && this.onStateChange) {
+    if (this.onStateChange) {
       this.onStateChange({
         previous: oldState,
         current: { ...this.expectedState },
@@ -168,29 +145,20 @@ class TimelineStateManager {
       });
     }
 
-    // Schedule immediate correction (don't wait for tick)
-    this._sendCorrection();
-    this.lastCommandTime = Date.now();
-    this._scheduleNextTick();
+    this._previousChannel = this.expectedState.channel;
 
     console.log('[TimelineStateManager] Channel override:', override);
   }
 
   /**
-   * Notify of external intensity change
+   * Set intensity
    */
   setIntensity(intensity) {
     const oldState = { ...this.expectedState };
     this.expectedState.intensity = intensity;
     this.expectedState.lastUpdateTime = Date.now();
 
-    // If intensity > 0 and channel is off, default to bilateral
-    if (intensity > 0 && this.expectedState.channel === 'off') {
-      this.expectedState.channel = 'bilateral';
-    }
-
-    // Notify state change
-    if (this._stateChanged(oldState, this.expectedState) && this.onStateChange) {
+    if (this.onStateChange) {
       this.onStateChange({
         previous: oldState,
         current: { ...this.expectedState },
@@ -198,10 +166,7 @@ class TimelineStateManager {
       });
     }
 
-    // Send immediately
-    this._sendCorrection();
-    this.lastCommandTime = Date.now();
-    this._scheduleNextTick();
+    this._previousIntensity = this.expectedState.intensity;
   }
 
   /**
@@ -212,49 +177,21 @@ class TimelineStateManager {
   }
 
   /**
-   * Schedule the next tick
+   * Tick - update expected state and notify on phase changes
    */
-  _scheduleNextTick() {
-    this._clearTickTimer();
-
-    const now = Date.now();
-    const timeSinceLastCommand = now - this.lastCommandTime;
-    const nextTickDelay = Math.max(0, this.tickIntervalMs - timeSinceLastCommand);
-
-    this.nextScheduledTick = now + nextTickDelay;
-    this.tickTimer = setTimeout(this._executeTick, nextTickDelay);
-
-    console.log('[TimelineStateManager] Next tick in', nextTickDelay, 'ms');
-  }
-
-  /**
-   * Clear the tick timer
-   */
-  _clearTickTimer() {
-    if (this.tickTimer) {
-      clearTimeout(this.tickTimer);
-      this.tickTimer = null;
-    }
-    this.nextScheduledTick = null;
-  }
-
-  /**
-   * Execute a tick: calculate expected state, check for upcoming transitions, send commands
-   * @param {boolean} isInitial - if true, don't defer (used for start/seek)
-   */
-  _executeTick(isInitial = false) {
+  _tick() {
     if (!this.isRunning || !this.clock) return;
 
-    const now = Date.now();
     const elapsed = this.clock.elapsedSeconds;
-
-    // Update expected state from mode engine
     const oldState = { ...this.expectedState };
-    this._updateExpectedStateFromEngine(elapsed);
 
-    // Check if state changed due to mode engine
-    const stateChanged = this._stateChanged(oldState, this.expectedState);
-    if (stateChanged && this.onStateChange) {
+    this._updateExpectedState(elapsed);
+
+    // Check if phase changed (channel or intensity)
+    const channelChanged = this.expectedState.channel !== this._previousChannel;
+    const intensityChanged = this.expectedState.intensity !== this._previousIntensity;
+
+    if ((channelChanged || intensityChanged) && this.onStateChange) {
       this.onStateChange({
         previous: oldState,
         current: { ...this.expectedState },
@@ -262,53 +199,17 @@ class TimelineStateManager {
       });
     }
 
-    // Execute tick - but only send commands if this is a periodic keepalive, not a phase transition
-    // Phase transitions (stateChanged && !isInitial) update expected state but don't send commands;
-    // the periodic keepalive (every 5s) will sync the device state when it fires.
-    // User-initiated changes (setChannelOverride, setIntensity) still send immediately.
-    const isPhaseTransition = stateChanged && !isInitial;
-    if (!isPhaseTransition) {
-      this._sendCorrection();
-      this.lastCommandTime = Date.now();
-    } else {
-      console.log('[TimelineStateManager] Phase transition - state updated, commands deferred to periodic tick');
-    }
+    this._previousChannel = this.expectedState.channel;
+    this._previousIntensity = this.expectedState.intensity;
 
     // Schedule next tick
-    this._scheduleNextTick();
+    this.tickTimer = setTimeout(this._tick, this.tickIntervalMs);
   }
 
   /**
-   * Find the next upcoming transition from the mode engine
-   * Returns { time: seconds, channel: string } or null
+   * Update expected state from mode engine
    */
-  _findNextTransition(elapsed) {
-    if (!this.modeEngine) return null;
-
-    // Look ahead up to 10 seconds for transitions
-    const lookAheadSeconds = 10;
-    const step = 0.5; // Check every 500ms
-
-    const currentResult = this.modeEngine.tick(elapsed, this.totalDuration, this.baseStrength);
-    const currentChannel = this._applyOverride(currentResult.activeChannel);
-
-    for (let t = elapsed + step; t <= elapsed + lookAheadSeconds; t += step) {
-      const result = this.modeEngine.tick(t, this.totalDuration, this.baseStrength);
-      const channelAtT = this._applyOverride(result.activeChannel);
-
-      if (channelAtT !== currentChannel) {
-        // Found a transition - find exact second
-        return { time: Math.floor(t), channel: channelAtT };
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Update expected state from mode engine at current elapsed time
-   */
-  _updateExpectedStateFromEngine(elapsedSeconds) {
+  _updateExpectedState(elapsedSeconds) {
     if (!this.modeEngine) return;
 
     const result = this.modeEngine.tick(elapsedSeconds, this.totalDuration, this.baseStrength);
@@ -348,82 +249,10 @@ class TimelineStateManager {
     this.expectedState.channel = this._applyOverride(engineChannel);
   }
 
-  /**
-   * Send correction commands to make device match expected state
-   */
-  _sendCorrection() {
-    if (!this.ble || !this.ble.canSendCommands) return;
-
-    const commands = [];
-    const channel = this.expectedState.channel;
-    const intensity = this.expectedState.intensity;
-
-    // Determine if we need to send channel command
-    const channelChanged = channel !== this.lastSentState.channel;
-    const intensityChanged = intensity !== this.lastSentState.intensity;
-
-    // Build channel command
-    let channelCmd = null;
-    if (channelChanged || (intensity > 0 && this.lastSentState.channel === null)) {
-      switch (channel) {
-        case 'left': channelCmd = PulsettoProtocol.Commands.activateLeft; break;
-        case 'right': channelCmd = PulsettoProtocol.Commands.activateRight; break;
-        case 'bilateral': channelCmd = PulsettoProtocol.Commands.activateBilateral; break;
-        case 'off': channelCmd = PulsettoProtocol.Commands.stop; break;
-      }
-    }
-
-    // Build intensity command
-    let intensityCmd = null;
-    if (intensityChanged && intensity > 0) {
-      intensityCmd = PulsettoProtocol.Commands.intensity(intensity);
-    }
-
-    // Queue commands with proper spacing
-    if (channelCmd) {
-      this.ble.queueChannel(channelCmd);
-      this.lastSentState.channel = channel;
-
-      if (this.onCommandScheduled) {
-        this.onCommandScheduled({ cmd: channelCmd, type: 'channel', time: Date.now() });
-      }
-    }
-
-    if (intensityCmd && intensityCmd !== channelCmd) {
-      this.ble.queueIntensity(intensityCmd);
-      this.lastSentState.intensity = intensity;
-
-      if (this.onCommandScheduled) {
-        this.onCommandScheduled({ cmd: intensityCmd, type: 'intensity', time: Date.now() });
-      }
-    }
-
-    // If channel is off, intensity is implicitly 0
-    if (channel === 'off') {
-      this.lastSentState.intensity = 0;
-    }
-
-    console.log('[TimelineStateManager] Correction:', {
-      channel,
-      intensity,
-      commands: [channelCmd, intensityCmd].filter(Boolean)
-    });
-  }
-
-  /**
-   * Check if state changed meaningfully
-   */
-  _stateChanged(oldState, newState) {
-    return oldState.channel !== newState.channel ||
-           oldState.intensity !== newState.intensity;
-  }
-
   destroy() {
     this.stop();
-    this.ble = null;
     this.clock = null;
     this.onStateChange = null;
-    this.onCommandScheduled = null;
   }
 }
 

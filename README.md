@@ -20,10 +20,19 @@ A vanilla JavaScript single-page application (SPA) for controlling Pulsetto vagu
 - **PWA Manifest**: Installable as a progressive web app
 - **Keepalive Pings**: Sends periodic commands to prevent connection timeout
 
-### ⚠️ Important: Chrome Background Limitation
-**Chrome terminates Web Bluetooth connections when tabs go to the background.** This is a browser security feature that cannot be fully bypassed. However, this app implements **aggressive countermeasures** to maximize the chance of survival:
+### ⚠️ Known Limitations
 
-**Implemented Keepalive Techniques:**
+#### Browser Background Sleep / Timeout
+Browsers aggressively throttle, suspend, or terminate background tabs to save battery and resources. **This is a fundamental limitation that cannot be fully bypassed.** This app implements aggressive countermeasures, but they only extend survival time—they cannot guarantee indefinite background operation.
+
+**Known behaviors:**
+- Chrome terminates Web Bluetooth connections when tabs go to background
+- Safari suspends JavaScript execution in background tabs
+- Firefox throttles timers in inactive tabs (minimum 1s intervals)
+- All browsers eventually suspend tabs regardless of countermeasures
+- Battery saver modes on mobile devices ignore keepalive attempts
+
+**Implemented countermeasures (extend survival, do not prevent eventual suspension):**
 1. **Wake Lock API** - Keeps screen on during sessions
 2. **Silent Audio Context** - Keeps audio processing thread alive (prevents some suspension)
 3. **Web Worker** - Runs timer in separate thread
@@ -252,7 +261,9 @@ npx ngrok http 8080
 
 ## License
 
-MIT License - See project root for details.
+GLWTS (Good Luck With That Shit) Public License - See [LICENSE](LICENSE) file for details.
+
+You can do whatever the fuck you want with this software at your OWN RISK. The author has no fucking clue what the code does, and you can never track them down to blame them.
 
 ## References
 

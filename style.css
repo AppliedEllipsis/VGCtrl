@@ -144,12 +144,11 @@ body {
 
 .panel-logs {
   min-height: 0;
-  max-height: 180px;
+  max-height: none;
   margin-bottom: 16px;
 }
 
 .panel-logs details {
-  height: 100%;
   display: flex;
   flex-direction: column;
 }

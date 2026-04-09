@@ -27,6 +27,10 @@ class TimelineScript {
         return this._generateFocusScript();
       case 'focus_r':
         return this._generateFocusRightScript();
+      case 'focus_both':
+        return this._generateFocusBothScript();
+      case 'focus_alt':
+        return this._generateFocusAltScript();
       case 'calm':
         return this._generateCalmScript();
       case 'meditation':
@@ -148,6 +152,87 @@ class TimelineScript {
           channel: 'off',
           intensity: 0,
           label: 'REST',
+          type: 'rest'
+        });
+      }
+    }
+
+    return instructions;
+  }
+
+  /**
+   * Focus Both mode: Continuous bilateral (no pauses)
+   */
+  _generateFocusBothScript() {
+    return [{
+      start: 0,
+      end: this.totalDuration,
+      channel: 'bilateral',
+      intensity: this.baseStrength,
+      label: 'ON',
+      type: 'active'
+    }];
+  }
+
+  /**
+   * Focus Alt mode: Left (30s) → Rest (15s) → Right (30s) → Rest (15s) → repeat
+   */
+  _generateFocusAltScript() {
+    const cycleDuration = 90; // 30s left + 15s rest + 30s right + 15s rest
+    const numCycles = Math.ceil(this.totalDuration / cycleDuration);
+    const instructions = [];
+
+    for (let i = 0; i < numCycles; i++) {
+      const cycleStart = i * cycleDuration;
+      const leftEnd = Math.min(cycleStart + 30, this.totalDuration);
+      const rest1End = Math.min(cycleStart + 45, this.totalDuration);
+      const rightEnd = Math.min(cycleStart + 75, this.totalDuration);
+      const cycleEnd = Math.min(cycleStart + cycleDuration, this.totalDuration);
+
+      // Left phase (0-30s)
+      if (leftEnd > cycleStart) {
+        instructions.push({
+          start: cycleStart,
+          end: leftEnd,
+          channel: 'left',
+          intensity: this.baseStrength,
+          label: 'Left',
+          type: 'active'
+        });
+      }
+
+      // Rest after left (30-45s)
+      if (rest1End > leftEnd) {
+        instructions.push({
+          start: leftEnd,
+          end: rest1End,
+          channel: 'off',
+          intensity: 0,
+          label: 'Rest',
+          type: 'rest'
+        });
+      }
+
+      // Right phase (45-75s)
+      if (rightEnd > rest1End) {
+        instructions.push({
+          start: rest1End,
+          end: rightEnd,
+          channel: 'right',
+          intensity: this.baseStrength,
+          label: 'Right',
+          type: 'active'
+        });
+      }
+
+      // Rest after right (75-90s)
+      if (cycleEnd > rightEnd) {
+        instructions.push({
+          start: rightEnd,
+          end: cycleEnd,
+          channel: 'off',
+          intensity: 0,
+          label: 'Rest',
           type: 'rest'
         });
       }

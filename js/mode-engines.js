@@ -273,6 +273,115 @@ class FocusRightEngine extends ModeEngine {
   }
 }
 
+// Focus Both - Bilateral continuous (no pauses)
+class FocusBothEngine extends ModeEngine {
+  start(baseStrength, totalDuration) {
+    super.start(baseStrength, totalDuration);
+    return [
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateBilateral
+    ];
+  }
+
+  tick(elapsed, totalDuration, baseStrength) {
+    // Continuous bilateral stimulation - no pauses
+    return new ModeTickResult({
+      commands: [], // No commands needed, already active
+      isStimulationActive: true,
+      effectiveStrength: baseStrength,
+      activeChannel: ActiveChannel.BILATERAL,
+      statusText: 'Focus Both · Active'
+    });
+  }
+
+  reconnectCommands(elapsed, totalDuration, baseStrength) {
+    return [
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateBilateral
+    ];
+  }
+}
+
+// Focus Alt - Alternates left/right with pauses between sides
+// Pattern: Left (30s) → Rest (15s) → Right (30s) → Rest (15s) → repeat
+class FocusAltEngine extends ModeEngine {
+  start(baseStrength, totalDuration) {
+    super.start(baseStrength, totalDuration);
+    return [
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateLeft
+    ];
+  }
+
+  tick(elapsed, totalDuration, baseStrength) {
+    const cycleDuration = 90; // 30s left + 15s rest + 30s right + 15s rest = 90s total
+    const positionInCycle = elapsed % cycleDuration;
+
+    if (positionInCycle < 30) {
+      // Left phase (0-30s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
+        isStimulationActive: true,
+        effectiveStrength: baseStrength,
+        activeChannel: ActiveChannel.LEFT,
+        statusText: 'Focus Alt · Left'
+      });
+    } else if (positionInCycle < 45) {
+      // Rest phase after left (30-45s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.stop],
+        isStimulationActive: false,
+        effectiveStrength: null,
+        activeChannel: ActiveChannel.OFF,
+        statusText: 'Focus Alt · Rest'
+      });
+    } else if (positionInCycle < 75) {
+      // Right phase (45-75s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
+        isStimulationActive: true,
+        effectiveStrength: baseStrength,
+        activeChannel: ActiveChannel.RIGHT,
+        statusText: 'Focus Alt · Right'
+      });
+    } else {
+      // Rest phase after right (75-90s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.stop],
+        isStimulationActive: false,
+        effectiveStrength: null,
+        activeChannel: ActiveChannel.OFF,
+        statusText: 'Focus Alt · Rest'
+      });
+    }
+  }
+
+  reconnectCommands(elapsed, totalDuration, baseStrength) {
+    const cycleDuration = 90;
+    const positionInCycle = elapsed % cycleDuration;
+
+    if (positionInCycle < 30) {
+      // Left phase
+      return [
+        PulsettoProtocol.Commands.intensity(baseStrength),
+        PulsettoProtocol.Commands.activateLeft
+      ];
+    } else if (positionInCycle < 45) {
+      // Rest after left
+      return [PulsettoProtocol.Commands.stop];
+    } else if (positionInCycle < 75) {
+      // Right phase
+      return [
+        PulsettoProtocol.Commands.intensity(baseStrength),
+        PulsettoProtocol.Commands.activateRight
+      ];
+    } else {
+      // Rest after right
+      return [PulsettoProtocol.Commands.stop];
+    }
+  }
+}
+
 // Pain Relief - Sine wave intensity oscillation
 class PainReliefEngine extends ModeEngine {
   start(baseStrength, totalDuration) {
@@ -522,6 +631,20 @@ const ModeDescriptions = {
     pattern: '30s ON / 30s OFF duty cycle',
     timing: 'Repeats throughout session'
   },
+  focus_both: {
+    name: 'Focus (both)',
+    summary: 'Continuous bilateral stimulation without pauses. Maximum focus enhancement with both ears active throughout.',
+    channel: 'Both ears',
+    pattern: 'Continuous bilateral',
+    timing: 'Full session duration'
+  },
+  focus_alt: {
+    name: 'Focus (alt)',
+    summary: 'Alternating left/right stimulation with 15-second rest periods between sides. Balanced focus with recovery time.',
+    channel: 'Alternating (Left → Rest → Right → Rest)',
+    pattern: '30s side ON / 15s rest, alternating',
+    timing: '90-second cycle repeats'
+  },
   pain: {
     name: 'Pain Relief',
     summary: 'Bilateral stimulation with gentle intensity waves (±1) on a 20-second cycle. Based on clinical protocols.',
@@ -589,6 +712,8 @@ const ModeEngineFactory = {
       case 'sleep': return new SleepEngine();
       case 'focus': return new FocusEngine();
       case 'focus_r': return new FocusRightEngine();
+      case 'focus_both': return new FocusBothEngine();
+      case 'focus_alt': return new FocusAltEngine();
       case 'pain': return new PainReliefEngine();
       case 'calm': return new CalmEngine();
       case 'headache': return new HeadacheEngine();
@@ -610,6 +735,8 @@ if (typeof window !== 'undefined') {
   window.SleepEngine = SleepEngine;
   window.FocusEngine = FocusEngine;
   window.FocusRightEngine = FocusRightEngine;
+  window.FocusBothEngine = FocusBothEngine;
+  window.FocusAltEngine = FocusAltEngine;
   window.PainReliefEngine = PainReliefEngine;
   window.CalmEngine = CalmEngine;
   window.HeadacheEngine = HeadacheEngine;

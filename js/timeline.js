@@ -37,9 +37,14 @@ class SessionTimeline {
     this.currentInstruction = null;
     this.tickTimer = null;
 
+    // Follow mode: timeline playhead follows session progress
+    this.followMode = true;
+    this.isUserScrubbing = false;
+
     // Callbacks
     this.onScrubCallback = null;
     this.onScriptStepCallback = null;
+    this.onFollowToggleCallback = null;
 
     this._init();
   }
@@ -92,6 +97,7 @@ class SessionTimeline {
               <path fill="currentColor" d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/>
             </svg>
           </button>
+          <button class="btn-timeline btn-follow active" title="Follow session">🔒</button>
         </div>
         <div class="timeline-legend">
           <span class="legend-item"><span class="legend-color" style="background:#238636"></span>Left</span>
@@ -108,6 +114,7 @@ class SessionTimeline {
     this.tooltip = this.container.querySelector('.scrubber-tooltip');
     this.positionDisplay = this.container.querySelector('.timeline-position');
     this.playStatus = this.container.querySelector('.play-status');
+    this.btnFollow = this.container.querySelector('.btn-follow');
 
     this._setupHighDPI();
   }

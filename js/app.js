@@ -230,6 +230,13 @@ class PulsettoApp {
     this.ui.btnClearLogs = document.getElementById('btn-clear-logs');
     this.ui.btnAutoScroll = document.getElementById('btn-auto-scroll');
     this.ui.btnExpandLogs = document.getElementById('btn-expand-logs');
+    this.ui.btnFilterBattery = document.getElementById('btn-filter-battery');
+
+    // Battery log filtering (hidden by default to reduce noise)
+    this.filterBatteryLogs = true;
+    if (this.ui.btnFilterBattery) {
+      this.ui.btnFilterBattery.classList.add('active');
+    }
   }
 
   _bindEvents() {
@@ -274,6 +281,7 @@ class PulsettoApp {
     this.ui.btnClearLogs.addEventListener('click', () => this.clearLogs());
     this.ui.btnAutoScroll.addEventListener('click', () => this.toggleAutoScroll());
     this.ui.btnExpandLogs.addEventListener('click', () => this.toggleLogExpansion());
+    this.ui.btnFilterBattery.addEventListener('click', () => this.toggleBatteryFilter());
 
     // Track manual scrolling to disable auto-scroll when user scrolls up
     this.ui.logContainer.addEventListener('scroll', () => this._onLogScroll());
@@ -428,20 +436,21 @@ class PulsettoApp {
       this._userSetIntensity = false;
     });
     
-    this.clock.on('completed', () => {
+    this.clock.on('completed', async () => {
       this.log('Session completed!', 'success');
       this._stopKeepalive();
+      this._stopStatusPoll();
       this.bgKeepalive.stop();
-      
+
       // Deactivate device
       this._sendStopCommand();
-      
+
       // Play completion sound after stop commands
       await this.playCompletionSound();
-      
+
       this._updateActionButtons();
       this._resetSessionUI();
-      
+
       // Reset user intensity flag so next session starts fresh with mode defaults
       this._userSetIntensity = false;
     });
@@ -472,6 +481,38 @@ class PulsettoApp {
       await this.ble.scanAndConnect();
     } catch (error) {
       this.log(`Scan failed: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Initialize or resume audio context during user gesture
+   * Browsers require audio context to be resumed during user interaction
+   */
+  _initAudioContext() {
+    try {
+      // Create audio context if it doesn't exist
+      if (!this.bgKeepalive?.audioContext) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          const ctx = new AudioContext();
+          // Assign to bgKeepalive so _playTone can use it
+          this.bgKeepalive = this.bgKeepalive || {};
+          this.bgKeepalive.audioContext = ctx;
+          console.log('[Audio] Context created during user gesture');
+        }
+      }
+
+      // Resume if suspended
+      const ctx = this.bgKeepalive?.audioContext;
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+          console.log('[Audio] Context resumed during user gesture');
+        }).catch(e => {
+          console.warn('[Audio] Could not resume:', e);
+        });
+      }
+    } catch (e) {
+      console.warn('[Audio] Init failed:', e);
     }
   }
 
@@ -1285,17 +1326,23 @@ class PulsettoApp {
           const percentage = PulsettoProtocol.Battery.calculatePercentage(parsed.value);
           this.ui.batteryLevel.textContent = `${percentage}%`;
           this.ui.batteryLevel.classList.remove('hidden');
-          this.log(`Battery: ${parsed.value.toFixed(2)}V (${percentage}%)`, 'info');
+          if (!this.filterBatteryLogs) {
+            this.log(`Battery: ${parsed.value.toFixed(2)}V (${percentage}%)`, 'info');
+          }
         }
         break;
-        
+
       case PulsettoProtocol.ResponseType.chargingStatus:
         if (parsed.value === true) {
           this.ui.chargingIndicator.classList.remove('hidden');
-          this.log('Charging: Yes', 'info');
+          if (!this.filterBatteryLogs) {
+            this.log('Charging: Yes', 'info');
+          }
         } else if (parsed.value === false) {
           this.ui.chargingIndicator.classList.add('hidden');
-          this.log('Charging: No', 'info');
+          if (!this.filterBatteryLogs) {
+            this.log('Charging: No', 'info');
+          }
         }
         break;
         
@@ -1552,6 +1599,13 @@ class PulsettoApp {
     if (this.autoScroll) {
       this.ui.logContainer.scrollTop = this.ui.logContainer.scrollHeight;
     }
+  }
+
+  // Toggle battery log filtering
+  toggleBatteryFilter() {
+    this.filterBatteryLogs = !this.filterBatteryLogs;
+    this.ui.btnFilterBattery.classList.toggle('active', this.filterBatteryLogs);
+    this.log(this.filterBatteryLogs ? 'Battery messages hidden' : 'Battery messages shown', 'info');
   }
 
   clearLogs() {

@@ -823,36 +823,6 @@ input[type="range"]:disabled {
   opacity: 0;
 }
 
-.timeline-position {
-  font-size: 0.6875rem;
-  color: var(--color-text-muted);
-  font-variant-numeric: tabular-nums;
-  margin-left: auto;
-}
-
-.timeline-position {
-  font-size: 0.6875rem;
-  color: var(--color-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.timeline-phase-countdown {
-  font-size: 0.6875rem;
-  color: var(--color-accent);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  padding: 2px 8px;
-  background: rgba(137, 87, 229, 0.15);
-  border-radius: 10px;
-  margin-left: auto;
-  margin-right: 8px;
-  transition: opacity 0.3s ease;
-}
-
-.timeline-phase-countdown.hidden {
-  opacity: 0;
-}
-
 .timeline-canvas-wrapper {
   position: relative;
   height: 140px;

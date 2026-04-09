@@ -186,8 +186,8 @@ const PulsettoProtocol = {
   Modes: {
     stress: { name: 'Stress Relief', duration: 10, strength: 8, breathing: false },
     sleep: { name: 'Sleep', duration: 20, strength: 8, breathing: false },
-    focus: { name: 'Focus', duration: 15, strength: 8, breathing: false },
-    focus_r: { name: 'Focus R', duration: 15, strength: 8, breathing: false },
+    focus: { name: 'Focus (left)', duration: 15, strength: 8, breathing: false },
+    focus_r: { name: 'Focus (right)', duration: 15, strength: 8, breathing: false },
     pain: { name: 'Pain Relief', duration: 15, strength: 8, breathing: false },
     calm: { name: 'Calm', duration: 10, strength: 8, breathing: true },
     headache: { name: 'Headache', duration: 12, strength: 8, breathing: false },

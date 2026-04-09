@@ -458,6 +458,28 @@ class PulsettoApp {
       requestAnimationFrame(() => {
         this.timeline.setMode(mode, this.timerMinutes * 60, this.baseStrength);
         this.timeline.updateProgress(0, false);
+
+        // Reset channel override to match new mode's initial channel
+        const firstStep = this.timeline.script?.getInstructionAt(0);
+        if (firstStep) {
+          const initialChannel = firstStep.channel === 'off' ? 'bilateral' : (firstStep.channel || 'bilateral');
+          this.channelOverride = initialChannel;
+
+          // Update UI buttons
+          [this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+            if (btn) btn.classList.remove('active');
+          });
+          let initialBtn = null;
+          switch(initialChannel) {
+            case 'left': initialBtn = this.ui.channelLeft; break;
+            case 'right': initialBtn = this.ui.channelRight; break;
+            case 'bilateral':
+            default: initialBtn = this.ui.channelBoth;
+          }
+          if (initialBtn) initialBtn.classList.add('active');
+
+          this.log(`Mode ${mode}: initial channel set to ${initialChannel}`, 'info');
+        }
       });
     }
 
@@ -816,13 +838,16 @@ class PulsettoApp {
 
     // Get initial commands from mode engine
     let initialCommands = this.modeEngine.start(this.baseStrength, duration);
+    this.log(`Mode engine generated: ${JSON.stringify(initialCommands)}`, 'info');
+    this.log(`Current channelOverride: ${this.channelOverride}`, 'info');
 
     // Apply channel override if not bilateral (default)
     if (this.channelOverride !== 'bilateral') {
       initialCommands = applyChannelOverride(initialCommands, this.channelOverride);
+      this.log(`After override applied: ${JSON.stringify(initialCommands)}`, 'info');
     }
 
-    this.log(`Commands to send: ${JSON.stringify(initialCommands)}`, 'info');
+    this.log(`Final commands to send: ${JSON.stringify(initialCommands)}`, 'info');
 
     // Send activation commands (uses manager's sendImmediate for blocking send)
     if (initialCommands.length > 0) {
@@ -1200,15 +1225,12 @@ class PulsettoApp {
     this.ui.timerValue.textContent = SessionClock.formatTime(this.timerMinutes * 60);
     this.ui.breathingCircle.classList.remove('inhale', 'hold', 'exhale');
 
-    // Stop timeline tracking
+    // Stop timeline tracking (but keep timeline visible for review)
     if (this.timeline) {
       this.timeline.stopTracking();
     }
 
-    // Hide timeline
-    if (this.ui.timelinePanel) {
-      this.ui.timelinePanel.classList.add('hidden');
-    }
+    // Note: Timeline panel stays visible so user can review session
 
     this.modeEngine = null;
     this.isStimulationActive = false;

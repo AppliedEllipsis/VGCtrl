@@ -10,8 +10,18 @@
 
 The Pulsetto device uses a simple **ASCII-based command protocol** over Nordic UART Service. This is a text-based protocol where commands are single characters terminated with a newline (`\n`, hex `0x0A`).
 
-### Key Finding
+### Key Findings
+
+**1. Protocol Version: v1 ASCII Only**
 **The official Pulsetto v2.2.91 app uses v1 ASCII protocol exclusively.** Binary protocol structures previously theorized were NOT found in the production APK bytecode.
+
+**2. No Custom Signal Control**
+**The official app has NO control over frequencies, waveforms, patterns, or stimulation algorithms.** The device generates all stimulation signals internally using fixed firmware algorithms. The app only controls:
+- Intensity level (1-9)
+- Channel selection (left/right/bilateral)
+- Session duration (timer)
+
+All "modes" (Sleep, Stress Relief, Pain Relief, etc.) are **purely UI labels** that map to different intensity + channel combinations. The device receives identical commands regardless of mode selected — only the intensity value and active channel differ.
 
 ---
 
@@ -204,7 +214,18 @@ Address  | Pattern | Command
 
 ## Mode Mapping (App-Layer)
 
-The device only understands intensity + channel. "Modes" are UI constructs:
+> **⚠️ Critical Finding from APK Deobfuscation**
+>
+> **The official Pulsetto v2.2.91 app has NO control over frequencies, waveforms, or stimulation patterns.** The device generates all signals internally using fixed firmware algorithms.
+>
+> The app only controls:
+> - **Intensity level** (1-9) — amplitude/volume of stimulation
+> - **Channel selection** (left/right/bilateral) — which electrodes are active
+> - **Duration** — how long to run (app-managed timer)
+>
+> "Modes" in the app are purely **UI labels** that map to intensity + channel combinations. The device receives identical commands regardless of whether you select "Sleep" or "Pain Relief" — only the intensity value and channel differ.
+
+### Official App Mode Mapping
 
 | Mode Name | Intensity | Channel | Duration | Breathing |
 |-----------|-----------|---------|----------|-----------|
@@ -217,7 +238,16 @@ The device only understands intensity + channel. "Modes" are UI constructs:
 | Inflammation | 7 | Bilateral (D) | 15 min | No |
 | Migraine | 8 | Bilateral (D) | 20 min | No |
 
-**Note**: Breathing guides are UI-only and do not affect device protocol.
+**What the device actually receives:**
+```
+Sleep mode:       "8\n" then "D\n" (intensity 8, bilateral)
+Energy mode:      "4\n" then "A\n" (intensity 4, left only)
+Pain Relief mode: "9\n" then "D\n" (intensity 9, bilateral)
+```
+
+**No frequency control. No custom waveforms. No pattern modulation.** The firmware handles all signal generation; the app only selects intensity and which electrodes are active.
+
+**Note**: Breathing guides are UI-only animations and do not affect device protocol.
 
 ---
 

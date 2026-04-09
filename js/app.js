@@ -217,6 +217,7 @@ class PulsettoApp {
     this.ui.channelLeft = document.getElementById('channel-left');
     this.ui.channelRight = document.getElementById('channel-right');
     this.ui.channelBoth = document.getElementById('channel-both');
+    this.ui.channelFade = document.getElementById('channel-fade');
     
     // Breathing guide
     this.ui.breathingGuide = document.getElementById('breathing-guide');
@@ -273,7 +274,7 @@ class PulsettoApp {
     this.ui.btnStop.addEventListener('click', () => this.stopSession());
 
     // Channel override
-    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth, this.ui.channelFade].forEach(btn => {
       btn?.addEventListener('click', (e) => this.setChannelOverride(e.target.dataset.channel));
     });
 
@@ -880,7 +881,7 @@ class PulsettoApp {
 
   _updateChannelButtons() {
     // Update channel override buttons to reflect current state
-    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth, this.ui.channelFade].forEach(btn => {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === this.channelOverride);
     });
   }

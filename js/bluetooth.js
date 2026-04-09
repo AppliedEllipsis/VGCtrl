@@ -54,22 +54,39 @@ class CommandQueueManager {
       this.debounceTimer = null;
     }
     
-    // Send stop immediately
-    try {
-      this.bt.emit('commandSending', { command: PulsettoProtocol.Commands.stop, timestamp: Date.now() });
-      await this.bt.sendCommandImmediate(PulsettoProtocol.Commands.stop);
-      this.lastChannel = null;
-      this.lastIntensity = null;
-      this.bt.emit('commandSent', { command: PulsettoProtocol.Commands.stop, timestamp: Date.now() });
-      
-      // Wait 2 seconds after stop, just like other commands
-      await new Promise(r => setTimeout(r, 2000));
-      
-      return true;
-    } catch (err) {
-      this.bt.emit('commandError', { command: PulsettoProtocol.Commands.stop, error: err.message, timestamp: Date.now() });
-      return false;
+    // Send stop with retry logic
+    let retryCount = 0;
+    const maxRetries = 3;
+    const stopCmd = PulsettoProtocol.Commands.stop;
+    
+    while (retryCount < maxRetries) {
+      try {
+        this.bt.emit('commandSending', { command: stopCmd, timestamp: Date.now() });
+        await this.bt._sendCommandDirect(stopCmd);
+        this.lastChannel = null;
+        this.lastIntensity = null;
+        this.bt.emit('commandSent', { command: stopCmd, timestamp: Date.now() });
+        
+        // Wait 2 seconds after stop, just like other commands
+        await new Promise(r => setTimeout(r, 2000));
+        return true;
+        
+      } catch (err) {
+        if (err.message && err.message.includes('already in progress') && retryCount < maxRetries - 1) {
+          retryCount++;
+          this.bt.emit('commandError', { 
+            command: stopCmd, 
+            error: `GATT busy, retry ${retryCount}/${maxRetries}`, 
+            timestamp: Date.now() 
+          });
+          await new Promise(r => setTimeout(r, 100 * retryCount));
+        } else {
+          this.bt.emit('commandError', { command: stopCmd, error: err.message, timestamp: Date.now() });
+          return false;
+        }
+      }
     }
+    return false;
   }
 
   // Clear all pending commands and reset state
@@ -135,27 +152,46 @@ class CommandQueueManager {
     
     // Execute commands with 2 second delays
     for (const cmd of commands) {
-      try {
-        this.bt.emit('commandSending', { command: cmd, timestamp: Date.now() });
-        await this.bt._sendCommandDirect(cmd);
-        
-        // Track what we sent
-        if (this._isChannelCmd(cmd)) {
-          this.lastChannel = cmd;
-        } else if (this._isIntensityCmd(cmd)) {
-          this.lastIntensity = cmd;
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          this.bt.emit('commandSending', { command: cmd, timestamp: Date.now() });
+          await this.bt._sendCommandDirect(cmd);
+          
+          // Track what we sent
+          if (this._isChannelCmd(cmd)) {
+            this.lastChannel = cmd;
+          } else if (this._isIntensityCmd(cmd)) {
+            this.lastIntensity = cmd;
+          }
+          
+          this.bt.emit('commandSent', { command: cmd, timestamp: Date.now() });
+          
+          // Delay before next command (unless stop or it's the last one)
+          if (cmd !== PulsettoProtocol.Commands.stop && cmd !== commands[commands.length - 1]) {
+            await new Promise(r => setTimeout(r, 2000));
+          }
+          break; // Success, move to next command
+          
+        } catch (err) {
+          if (err.message && err.message.includes('already in progress') && retryCount < maxRetries - 1) {
+            // GATT conflict - wait and retry this command
+            retryCount++;
+            this.bt.emit('commandError', { 
+              command: cmd, 
+              error: `GATT busy, retry ${retryCount}/${maxRetries}`, 
+              timestamp: Date.now() 
+            });
+            await new Promise(r => setTimeout(r, 100 * retryCount)); // Exponential backoff
+          } else {
+            // Non-retryable error or max retries exceeded
+            this.bt.emit('commandError', { command: cmd, error: err.message, timestamp: Date.now() });
+            console.warn('Command failed:', err.message);
+            break;
+          }
         }
-        
-        this.bt.emit('commandSent', { command: cmd, timestamp: Date.now() });
-        
-        // Delay before next command (unless stop or it's the last one)
-        if (cmd !== PulsettoProtocol.Commands.stop && cmd !== commands[commands.length - 1]) {
-          await new Promise(r => setTimeout(r, 2000));
-        }
-      } catch (err) {
-        // Log but continue - next tick will retry if needed
-        this.bt.emit('commandError', { command: cmd, error: err.message, timestamp: Date.now() });
-        console.warn('Command failed:', err.message);
       }
     }
     
@@ -207,19 +243,39 @@ class CommandQueueManager {
     this.isProcessing = true;
     
     for (const cmd of commands) {
-      try {
-        this.bt.emit('commandSending', { command: cmd, timestamp: Date.now() });
-        await this.bt._sendCommandDirect(cmd);
-        if (this._isChannelCmd(cmd)) this.lastChannel = cmd;
-        if (this._isIntensityCmd(cmd)) this.lastIntensity = cmd;
-        this.bt.emit('commandSent', { command: cmd, timestamp: Date.now() });
-        
-        if (cmd !== commands[commands.length - 1]) {
-          await new Promise(r => setTimeout(r, 2000));
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          this.bt.emit('commandSending', { command: cmd, timestamp: Date.now() });
+          await this.bt._sendCommandDirect(cmd);
+          if (this._isChannelCmd(cmd)) this.lastChannel = cmd;
+          if (this._isIntensityCmd(cmd)) this.lastIntensity = cmd;
+          this.bt.emit('commandSent', { command: cmd, timestamp: Date.now() });
+          
+          if (cmd !== commands[commands.length - 1]) {
+            await new Promise(r => setTimeout(r, 2000));
+          }
+          break; // Success, move to next command
+          
+        } catch (err) {
+          if (err.message && err.message.includes('already in progress') && retryCount < maxRetries - 1) {
+            // GATT conflict - wait and retry this command
+            retryCount++;
+            this.bt.emit('commandError', { 
+              command: cmd, 
+              error: `GATT busy, retry ${retryCount}/${maxRetries}`, 
+              timestamp: Date.now() 
+            });
+            await new Promise(r => setTimeout(r, 100 * retryCount)); // Exponential backoff
+          } else {
+            // Non-retryable error or max retries exceeded
+            this.bt.emit('commandError', { command: cmd, error: err.message, timestamp: Date.now() });
+            console.warn('Command failed:', err.message);
+            break;
+          }
         }
-      } catch (err) {
-        this.bt.emit('commandError', { command: cmd, error: err.message, timestamp: Date.now() });
-        console.warn('Command failed:', err.message);
       }
     }
     

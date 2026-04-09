@@ -375,6 +375,27 @@ body {
   cursor: not-allowed;
 }
 
+/* Fade button - distinct styling for ramp action */
+.btn-channel-fade {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+  flex: 0 0 100%;
+  margin-top: 6px;
+  font-weight: 500;
+}
+
+.btn-channel-fade:hover:not(:disabled) {
+  background: #b392f0;
+  border-color: #b392f0;
+}
+
+.btn-channel-fade.active {
+  background: var(--color-accent);
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
 .mode-selector select {
   width: 100%;
   padding: 10px 12px;

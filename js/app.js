@@ -65,9 +65,18 @@ class PulsettoApp {
     this._bindClockEvents();
     this._initTimeline();
 
-    // Set initial mode from HTML default (Sleep)
-    const defaultMode = this.ui.modeSelect.value;
-    this.selectMode(defaultMode);
+    // Load saved mode from localStorage, or use HTML default
+    const savedMode = localStorage.getItem('pulsetto_lastMode');
+    const availableModes = Object.keys(PulsettoProtocol.Modes);
+    const initialMode = savedMode && availableModes.includes(savedMode) 
+      ? savedMode 
+      : this.ui.modeSelect.value;
+    
+    // Update select element to match saved/default mode
+    if (this.ui.modeSelect.value !== initialMode) {
+      this.ui.modeSelect.value = initialMode;
+    }
+    this.selectMode(initialMode);
 
     this._updateUI();
     
@@ -533,6 +542,13 @@ class PulsettoApp {
 
     this._updateBreathingUI();
     this.log(`Mode selected: ${description.name}`, 'info');
+
+    // Save selected mode to localStorage for persistence
+    try {
+      localStorage.setItem('pulsetto_lastMode', mode);
+    } catch (e) {
+      // Ignore storage errors (e.g., private mode)
+    }
   }
 
   async setChannelOverride(channel) {

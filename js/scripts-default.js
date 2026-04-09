@@ -58,7 +58,7 @@ suggested_intensity(7)
 repeat(cycle)
   mode(100%, left)
   wait(30s)
-  mode(0%, off)
+  mode(0%)
   wait(30s)
 end
 
@@ -69,7 +69,7 @@ suggested_intensity(7)
 repeat(cycle)
   mode(100%, right)
   wait(30s)
-  mode(0%, off)
+  mode(0%)
   wait(30s)
 end
 
@@ -80,7 +80,7 @@ suggested_intensity(7)
 repeat(cycle)
   mode(100%, both)
   wait(30s)
-  mode(0%, off)
+  mode(0%)
   wait(30s)
 end
 
@@ -93,19 +93,19 @@ repeat(cycle)
   mode(100%, both)
   wait(30s)
   # Pause after both (30-45s)
-  mode(0%, off)
+  mode(0%)
   wait(15s)
   # Left phase (45-75s)
   mode(100%, left)
   wait(30s)
   # Pause after left (75-90s)
-  mode(0%, off)
+  mode(0%)
   wait(15s)
   # Right phase (90-120s)
   mode(100%, right)
   wait(30s)
   # Pause after right (120-135s)
-  mode(0%, off)
+  mode(0%)
   wait(15s)
 end
 
@@ -132,7 +132,7 @@ end
 suggested_intensity(5)
 repeat(cycle)
   # Inhale phase - stimulation starts after 3s lead
-  mode(0%, off)
+  mode(0%)
   wait(3s)
   mode(100%, both)
   wait(2s)
@@ -140,7 +140,7 @@ repeat(cycle)
   mode(100%, both)
   wait(5s)
   # Exhale phase - no stimulation
-  mode(0%, off)
+  mode(0%)
   wait(7s)
 end
 
@@ -151,7 +151,7 @@ end
 suggested_intensity(5)
 repeat(cycle)
   # Inhale phase - stimulation starts after 3s lead
-  mode(0%, off)
+  mode(0%)
   wait(3s)
   mode(100%, both)
   wait(2s)
@@ -159,7 +159,7 @@ repeat(cycle)
   mode(100%, both)
   wait(4s)
   # Exhale phase - no stimulation
-  mode(0%, off)
+  mode(0%)
   wait(5s)
 end
 
@@ -170,7 +170,7 @@ suggested_intensity(8)
 repeat(cycle)
   mode(100%, both)
   wait(120s)
-  mode(0%, off)
+  mode(0%)
   wait(30s)
 end
 

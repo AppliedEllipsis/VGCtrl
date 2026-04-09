@@ -44,7 +44,7 @@
  * === COMMANDS ===
  * 
  * [Mode Name]          - Starts a new mode script (must be first thing on line)
- * mode(int, ch)        - Turn on with intensity (1-9 or %), channel (left/right/both/off)
+ * mode(int, ch)        - Turn on with intensity (1-9 or %), channel (left/right/both/off/none)
  * wait(time)           - Do nothing for X seconds, % of session, or 'session' for all remaining time
  * fade(to, over)       - Gradually change intensity over time
  * repeat(type)         - Start repeating a section
@@ -57,7 +57,7 @@
  * Time: 1s, 5s, 30s, 1m, 5m (seconds or minutes)
  *      or 10%, 20% (percentage of total session time)
  *      or 'session' (all remaining time)
- * Channel: left, right, both, off
+ * Channel: left, right, both, off, none (none maps to both for UX when stopped)
  * Repeat: cycle (repeat forever), stretch (fit to session time)
  * 
  * === COMMENTS ===

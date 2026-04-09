@@ -50,12 +50,15 @@ Must be on its own line, in brackets. Everything after this belongs to this mode
 
 ### `mode(intensity, channel)` - Turn On/Off
 - **intensity**: 0-9 (absolute) or 0%-100% (relative to user's choice)
-- **channel**: `left`, `right`, `both`, or `off`
+- **channel**: `left`, `right`, `both`, `off`, or `none` (none maps to both for UX)
+
+The channel parameter is optional and defaults to `both`. Use `off` or `none` when stopping, or omit the channel entirely.
 
 Examples:
-- `mode(5, both)` - Half power on both sides
+- `mode(5)` or `mode(5, both)` - Half power on both sides (implicit both)
 - `mode(100%, left)` - User's chosen intensity, left only
-- `mode(0%, off)` or `mode(0, off)` - Stop (both equivalent, UX shows "both" channel when stopped)
+- `mode(0%)` or `mode(0%, off)` - Stop (no channel specified = both in UX)
+- `mode(0%, none)` - Stop with explicit "none" direction (maps to "both" in UX)
 
 ### `wait(time)` - Do Nothing
 - **time**: `30s` (seconds), `1m` (minutes), `10%` (percent of session), or `session` (all remaining time)
@@ -169,7 +172,7 @@ Need a literal semicolon? Escape it:
 
 | Mistake | What Happens | Fix |
 |---------|--------------|-----|
-| `mode(5)` | Error - need channel | Add `, both` etc |
+| `mode()` | Error - need intensity | Add intensity like `mode(5)` |
 | `mode(5, both` | Error - missing `)` | Add closing paren |
 | `wait()` | Error - need time | Add `30s` etc |
 | `repeat(cycle)` with no `end` | Error - unclosed loop | Add `end` |

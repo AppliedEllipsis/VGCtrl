@@ -70,6 +70,11 @@ class PulsettoApp {
     this.selectMode(defaultMode);
 
     this._updateUI();
+    
+    // Initialize audio toggle state from loaded preference
+    if (this.ui.audioToggle) {
+      this.ui.audioToggle.checked = this.audioEnabled;
+    }
 
     this.log('Pulsetto Web Controller initialized (ASCII protocol)', 'info');
     this.log('Click "Scan for Device" to connect', 'info');
@@ -180,6 +185,9 @@ class PulsettoApp {
     this.ui.channelBoth = document.getElementById('channel-both');
     this.ui.fadeSelect = document.getElementById('fade-select');
     
+    // Audio toggle
+    this.ui.audioToggle = document.getElementById('audio-toggle');
+    
     // Breathing guide
     this.ui.breathingGuide = document.getElementById('breathing-guide');
     this.ui.breathingCircle = document.getElementById('breathing-circle');
@@ -238,6 +246,14 @@ class PulsettoApp {
     
     // Fade dropdown
     this.ui.fadeSelect?.addEventListener('change', (e) => this._onFadeSelect(e.target.value));
+    
+    // Audio toggle
+    this.ui.audioToggle?.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      this._saveAudioPreference(enabled);
+      this.audioEnabled = enabled;
+      this.log(`Audio feedback ${enabled ? 'enabled' : 'disabled'}`, 'info');
+    });
 
     // Logs
     this.ui.btnClearLogs.addEventListener('click', () => this.clearLogs());
@@ -967,6 +983,29 @@ class PulsettoApp {
     // Ensure audio context stays alive (prevents suspension)
     if (this.bgKeepalive.audioContext?.state === 'suspended') {
       this.bgKeepalive.audioContext.resume();
+    }
+  }
+
+  // Audio preference methods with localStorage persistence
+  _loadAudioPreference() {
+    try {
+      const stored = localStorage.getItem('pulsetto_audio_enabled');
+      if (stored === null) {
+        return true; // Default to enabled if not set
+      }
+      return stored === 'true';
+    } catch (e) {
+      // localStorage may be unavailable (private mode, etc.)
+      return true;
+    }
+  }
+
+  _saveAudioPreference(enabled) {
+    try {
+      localStorage.setItem('pulsetto_audio_enabled', String(enabled));
+    } catch (e) {
+      // localStorage may be unavailable (private mode, quota exceeded, etc.)
+      console.warn('[Audio] Failed to save preference:', e);
     }
   }
 

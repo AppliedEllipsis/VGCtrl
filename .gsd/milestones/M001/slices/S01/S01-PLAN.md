@@ -78,7 +78,7 @@ Implementation steps:
   - Files: `js/app.js`
   - Verify: grep -q "_playTone" js/app.js && grep -q "playPhaseSound" js/app.js && grep -q "playCompletionSound" js/app.js
 
-- [ ] **T03: Add audio toggle UI with localStorage persistence** `est:45m`
+- [x] **T03: Add audio toggle UI with localStorage persistence** `est:45m`
   Add a settings toggle to enable/disable audio feedback, storing preference in localStorage.
 
 Implementation steps:

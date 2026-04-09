@@ -212,6 +212,10 @@ body {
   .controls-row-3col .fade-control.compact {
     grid-column: span 2;
   }
+  
+  .controls-row-3col .audio-control.compact {
+    grid-column: span 2;
+  }
 }
 
 /* Timer Row */
@@ -352,6 +356,34 @@ body {
 .fade-control.compact select:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Audio Control */
+.audio-control.compact {
+  display: flex;
+  flex-direction: column;
+}
+
+.audio-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.audio-toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+.audio-toggle-text {
+  line-height: 1.4;
 }
 
 /* Mode Selector */

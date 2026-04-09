@@ -798,6 +798,10 @@ class PulsettoApp {
       return;
     }
 
+    this.log(`=== START SESSION ===`, 'info');
+    this.log(`selectedMode: ${this.selectedMode}`, 'info');
+    this.log(`channelOverride: ${this.channelOverride}`, 'info');
+    this.log(`modeSelect.value: ${this.ui.modeSelect?.value}`, 'info');
     this.log(`Starting session: ${this.selectedMode}, ${this.timerMinutes}min, intensity ${this.baseStrength}`, 'info');
     this.log(`  Channel override: ${this.channelOverride}`, 'info');
 

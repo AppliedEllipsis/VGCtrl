@@ -70,8 +70,8 @@ class StressReliefEngine extends ModeEngine {
   start(baseStrength, totalDuration) {
     super.start(baseStrength, totalDuration);
     return [
-      PulsettoProtocol.Commands.activateBilateral,
-      PulsettoProtocol.Commands.intensity(baseStrength)
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateBilateral
     ];
   }
 
@@ -146,7 +146,7 @@ class SleepEngine extends ModeEngine {
   }
 
   _phaseCommands(phaseIndex, strength) {
-    return [this._phaseCommand(phaseIndex), PulsettoProtocol.Commands.intensity(strength)];
+    return [PulsettoProtocol.Commands.intensity(strength), this._phaseCommand(phaseIndex)];
   }
 
   // Fade: last 20% reduces strength by -1 then -2
@@ -186,8 +186,8 @@ class FocusEngine extends ModeEngine {
   start(baseStrength, totalDuration) {
     super.start(baseStrength, totalDuration);
     return [
-      PulsettoProtocol.Commands.activateLeft,
-      PulsettoProtocol.Commands.intensity(baseStrength)
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateLeft
     ];
   }
 
@@ -219,8 +219,8 @@ class FocusEngine extends ModeEngine {
     const isOnPhase = Math.floor(elapsed / dutyCycle) % 2 === 0;
     if (isOnPhase) {
       return [
-        PulsettoProtocol.Commands.activateLeft,
-        PulsettoProtocol.Commands.intensity(baseStrength)
+        PulsettoProtocol.Commands.intensity(baseStrength),
+        PulsettoProtocol.Commands.activateLeft
       ];
     }
     return [PulsettoProtocol.Commands.stop];
@@ -232,8 +232,8 @@ class FocusRightEngine extends ModeEngine {
   start(baseStrength, totalDuration) {
     super.start(baseStrength, totalDuration);
     return [
-      PulsettoProtocol.Commands.activateRight,
-      PulsettoProtocol.Commands.intensity(baseStrength)
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateRight
     ];
   }
 
@@ -265,8 +265,8 @@ class FocusRightEngine extends ModeEngine {
     const isOnPhase = Math.floor(elapsed / dutyCycle) % 2 === 0;
     if (isOnPhase) {
       return [
-        PulsettoProtocol.Commands.activateRight,
-        PulsettoProtocol.Commands.intensity(baseStrength)
+        PulsettoProtocol.Commands.intensity(baseStrength),
+        PulsettoProtocol.Commands.activateRight
       ];
     }
     return [PulsettoProtocol.Commands.stop];
@@ -278,8 +278,8 @@ class PainReliefEngine extends ModeEngine {
   start(baseStrength, totalDuration) {
     super.start(baseStrength, totalDuration);
     return [
-      PulsettoProtocol.Commands.activateBilateral,
-      PulsettoProtocol.Commands.intensity(baseStrength)
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateBilateral
     ];
   }
 
@@ -309,8 +309,8 @@ class HeadacheEngine extends ModeEngine {
   start(baseStrength, totalDuration) {
     super.start(baseStrength, totalDuration);
     return [
-      PulsettoProtocol.Commands.activateBilateral,
-      PulsettoProtocol.Commands.intensity(baseStrength)
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateBilateral
     ];
   }
 
@@ -347,8 +347,8 @@ class HeadacheEngine extends ModeEngine {
     
     if (inBurst) {
       return [
-        PulsettoProtocol.Commands.activateBilateral,
-        PulsettoProtocol.Commands.intensity(baseStrength)
+        PulsettoProtocol.Commands.intensity(baseStrength),
+        PulsettoProtocol.Commands.activateBilateral
       ];
     }
     return [PulsettoProtocol.Commands.stop];
@@ -360,8 +360,8 @@ class NauseaEngine extends ModeEngine {
   start(baseStrength, totalDuration) {
     super.start(baseStrength, totalDuration);
     return [
-      PulsettoProtocol.Commands.activateBilateral,
-      PulsettoProtocol.Commands.intensity(baseStrength)
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateBilateral
     ];
   }
 
@@ -459,8 +459,8 @@ class CalmEngine extends RespiratoryGatedEngine {
     
     if (isActive) {
       return [
-        PulsettoProtocol.Commands.activateBilateral,
-        PulsettoProtocol.Commands.intensity(baseStrength)
+        PulsettoProtocol.Commands.intensity(baseStrength),
+        PulsettoProtocol.Commands.activateBilateral
       ];
     }
     return [PulsettoProtocol.Commands.stop];
@@ -484,8 +484,8 @@ class MeditationEngine extends RespiratoryGatedEngine {
     
     if (isActive) {
       return [
-        PulsettoProtocol.Commands.activateBilateral,
-        PulsettoProtocol.Commands.intensity(baseStrength)
+        PulsettoProtocol.Commands.intensity(baseStrength),
+        PulsettoProtocol.Commands.activateBilateral
       ];
     }
     return [PulsettoProtocol.Commands.stop];

@@ -305,6 +305,7 @@ class SessionTimeline {
           start: instruction.start,
           end: instruction.end,
           isSeek: false,
+          isPhaseChange: instructionChanged,
           isFadeUpdate: intensityChanged && !instructionChanged
         };
         this.onScriptStepCallback(step);

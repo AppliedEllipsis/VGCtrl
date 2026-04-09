@@ -1479,9 +1479,11 @@ class PulsettoApp {
     const sessionActive = isRunning || isPaused;
     this.ui.modeSelect.disabled = sessionActive;
     this.ui.timerSlider.disabled = sessionActive;
+    // Intensity slider always enabled - allows pre-setting and manual override
+    this.ui.intensitySlider.disabled = false;
     this.ui.btnTimerUp.disabled = sessionActive;
     this.ui.btnTimerDown.disabled = sessionActive;
-    
+
     // Enable fade only when session is active
     if (this.ui.fadeSelect) {
       this.ui.fadeSelect.disabled = !sessionActive || !this.ble.isConnected;
@@ -1492,6 +1494,7 @@ class PulsettoApp {
     this.ui.modeSelect.disabled = !enabled;
     this.ui.timerSlider.disabled = !enabled;
     // Intensity slider always enabled - allows pre-setting before connect
+    this.ui.intensitySlider.disabled = false;
     this.ui.btnTimerUp.disabled = !enabled;
     this.ui.btnTimerDown.disabled = !enabled;
     this.ui.btnStart.disabled = !enabled;

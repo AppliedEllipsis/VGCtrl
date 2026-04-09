@@ -113,18 +113,28 @@ class BackgroundKeepalive {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
 
-      this.audioContext = new AudioContext();
-      this.silentOscillator = this.audioContext.createOscillator();
-      const gainNode = this.audioContext.createGain();
+      // Reuse existing audio context if available (may have been created during user gesture)
+      if (!this.audioContext) {
+        this.audioContext = new AudioContext();
+        console.log('[Keepalive] Created new audio context');
+      } else {
+        console.log('[Keepalive] Reusing existing audio context');
+      }
 
-      // 5 Hz is below human hearing threshold (~20 Hz)
-      this.silentOscillator.frequency.value = 5;
-      // Zero gain = completely silent
-      gainNode.gain.value = 0;
+      // Only create oscillator if we don't already have one
+      if (!this.silentOscillator) {
+        this.silentOscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
 
-      this.silentOscillator.connect(gainNode);
-      gainNode.connect(this.audioContext.destination);
-      this.silentOscillator.start();
+        // 5 Hz is below human hearing threshold (~20 Hz)
+        this.silentOscillator.frequency.value = 5;
+        // Zero gain = completely silent
+        gainNode.gain.value = 0;
+
+        this.silentOscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        this.silentOscillator.start();
+      }
 
       if (this.audioContext.state === 'suspended') {
         this.audioContext.resume();
@@ -141,6 +151,21 @@ class BackgroundKeepalive {
       } catch (e) {
         // Ignore if already stopped
       }
+      this.silentOscillator = null;
+    }
+    // Don't close the audio context - it's shared with tone playback
+    // Only null it out if we're fully stopping (keepalive.stop() calls this)
+  }
+
+  /**
+   * Close the audio context completely
+   * Call this when fully shutting down (not just pausing keepalive)
+   */
+  closeAudioContext() {
+    if (this.silentOscillator) {
+      try {
+        this.silentOscillator.stop();
+      } catch (e) {}
       this.silentOscillator = null;
     }
     if (this.audioContext) {

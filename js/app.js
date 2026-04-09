@@ -465,10 +465,45 @@ class PulsettoApp {
 
   // Actions
   async scanAndConnect() {
+    // Initialize audio context during user gesture (required by browsers)
+    this._initAudioContext();
+
     try {
       await this.ble.scanAndConnect();
     } catch (error) {
       this.log(`Scan failed: ${error.message}`, 'error');
+    }
+  }
+
+  /**
+   * Initialize or resume audio context during user gesture
+   * Browsers require audio context to be resumed during user interaction
+   */
+  _initAudioContext() {
+    try {
+      // Create audio context if it doesn't exist
+      if (!this.bgKeepalive?.audioContext) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (AudioContext) {
+          const ctx = new AudioContext();
+          // Assign to bgKeepalive so _playTone can use it
+          this.bgKeepalive = this.bgKeepalive || {};
+          this.bgKeepalive.audioContext = ctx;
+          console.log('[Audio] Context created during user gesture');
+        }
+      }
+
+      // Resume if suspended
+      const ctx = this.bgKeepalive?.audioContext;
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+          console.log('[Audio] Context resumed during user gesture');
+        }).catch(e => {
+          console.warn('[Audio] Could not resume:', e);
+        });
+      }
+    } catch (e) {
+      console.warn('[Audio] Init failed:', e);
     }
   }
 

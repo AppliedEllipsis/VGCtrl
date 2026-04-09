@@ -84,9 +84,9 @@ class PulsettoApp {
       this._seekSession(newElapsed, doneCallback);
     });
 
-    // Handle timeline phase changes (UI preset updates only, no commands)
-    this.timeline.onPhaseChange((preset) => {
-      this._onTimelinePhaseChange(preset);
+    // Handle timeline script steps (UI updates only, no commands)
+    this.timeline.onScriptStep((step) => {
+      this._onTimelineScriptStep(step);
     });
   }
 
@@ -131,7 +131,7 @@ class PulsettoApp {
     this.clock.elapsedSeconds = clamped;
     this.clock.remainingSeconds = this.clock.totalDuration - clamped;
 
-    // Notify timeline of seek - it will update expected state and notify via onPhaseChange
+    // Notify timeline of seek - it will update to current script step and notify via onScriptStep
     if (this.timeline) {
       this.timeline.seek(clamped);
       this.log(`Seek: ${this._formatTime(clamped)}`, 'info');
@@ -963,52 +963,55 @@ class PulsettoApp {
    * Timeline is visual only; no commands are sent here.
    * User must manually adjust or confirm settings.
    */
-  _onTimelinePhaseChange(preset) {
+  /**
+   * Handle timeline script step change - update UI to show current "instruction"
+   * Format: { channel, intensity, label, type, start, end, isSeek? }
+   * Timeline is purely visual - no commands sent automatically.
+   */
+  _onTimelineScriptStep(step) {
     // Update intensity slider display (don't send command)
-    if (preset.intensity !== undefined) {
-      this.ui.intensityValue.textContent = preset.intensity;
-      this.ui.intensitySlider.value = preset.intensity;
-      this.baseStrength = preset.intensity;
+    if (step.intensity !== undefined) {
+      this.ui.intensityValue.textContent = step.intensity;
+      this.ui.intensitySlider.value = step.intensity;
+      this.baseStrength = step.intensity;
     }
 
     // Update channel button states (don't send command)
-    if (preset.channel) {
+    if (step.channel) {
       [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
         if (btn) btn.classList.remove('active');
       });
 
       let activeBtn = null;
-      switch (preset.channel) {
-        case 'left': activeBtn = this.ui.channelLeft; break;
-        case 'right': activeBtn = this.ui.channelRight; break;
-        case 'bilateral': activeBtn = this.ui.channelBoth; break;
-        default: activeBtn = this.ui.channelAuto;
+      let btnLabel = 'Auto';
+      switch (step.channel) {
+        case 'left': activeBtn = this.ui.channelLeft; btnLabel = 'Left'; break;
+        case 'right': activeBtn = this.ui.channelRight; btnLabel = 'Right'; break;
+        case 'bilateral': activeBtn = this.ui.channelBoth; btnLabel = 'Both'; break;
+        default: activeBtn = this.ui.channelAuto; btnLabel = 'Auto';
       }
       if (activeBtn) activeBtn.classList.add('active');
 
-      // Log the preset (user can manually apply)
-      if (preset.phase === 'phase' || preset.phase === 'seek') {
-        this.log(`Timeline preset: ${preset.channel}, intensity ${preset.intensity}`, 'info');
-      }
+      // Log the script step (user can manually apply)
+      const seekPrefix = step.isSeek ? '[Seek] ' : '';
+      this.log(`${seekPrefix}Script: ${step.label} (${btnLabel}, ${step.intensity})`, 'info');
     }
   }
 
   _resumeSessionOnDevice() {
-    // Let the timeline state manager handle resuming - it will calculate
-    // expected state and send correction commands
+    // Notify timeline of current position so it updates UI to current script step
     if (this.timeline) {
       this.timeline.seek(this.clock.elapsedSeconds);
     }
   }
 
-  // Keepalive - DEPRECATED: TimelineStateManager now handles command scheduling
-  // These methods are kept for compatibility but do nothing
+  // Keepalive methods - timeline is visual-only now, manual control sends commands
   _startKeepalive() {
-    // No-op: TimelineStateManager handles periodic command scheduling
+    // No-op: manual controls and fade scripts handle command sending
   }
 
   _stopKeepalive() {
-    // No-op: TimelineStateManager handles its own lifecycle
+    // No-op: manual controls handle command lifecycle
   }
 
   // Status polling

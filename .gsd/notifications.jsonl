@@ -1,0 +1,1 @@
+{"id":"90b93954-f0cc-433e-86a5-d614b6855094","ts":"2026-04-09T05:41:54.137Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":false}

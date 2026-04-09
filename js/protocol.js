@@ -74,10 +74,13 @@ const PulsettoProtocol = {
     queryDeviceId: 'i\n',
     queryFirmware: 'v\n',
 
-    // Intensity level (1-9) as ASCII
+    // Intensity level (0-9) as ASCII. 0 is stop.
     intensity(level) {
-      if (level < 1 || level > 9) {
-        throw new Error(`Intensity must be 1-9, got ${level}`);
+      if (level < 0 || level > 9) {
+        throw new Error(`Intensity must be 0-9, got ${level}`);
+      }
+      if (level === 0) {
+        return this.stop;
       }
       return `${level}\n`;
     },

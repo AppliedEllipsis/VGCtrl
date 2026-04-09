@@ -113,12 +113,17 @@ percentage = ((voltage - 2.5) / (3.95 - 2.5)) * 100
 
 ## Command Sequences
 
-### Typical Session Start
+### Typical Session Start (with recommended delays)
 ```
 1. Q\n          (Optional: Query battery)
 2. 8\n          (Set intensity to level 8)
-3. D\n          (Start bilateral stimulation)
+   ↳ Wait for "8" response
+3. [~2 second delay]  ← Prevents device confusion
+4. D\n          (Start bilateral stimulation)
+   ↳ Wait for "D" response
 ```
+
+> **Note on Timing**: ~2 second delay between intensity and activation commands is recommended based on observed device behavior. The device may fail to properly apply intensity or ignore activation if commands are sent too rapidly.
 
 ### Session Stop
 ```
@@ -217,6 +222,28 @@ The device only understands intensity + channel. "Modes" are UI constructs:
 ---
 
 ## Implementation Notes
+
+### Command Timing & Ordering
+
+> **⚠️ Critical Implementation Detail**
+>
+> Observed from VG Ctrl project implementation: The device can become confused or fail to properly follow commands when sent in rapid succession without adequate delays.
+>
+> **Recommended Approach:**
+> - **Inter-command delay**: ~2 seconds between consecutive commands
+> - **Command ordering**: Always set intensity before activating channels
+>   1. Send intensity command (e.g., `8\n`) → wait for response
+>   2. Wait ~2 seconds
+>   3. Send activation command (e.g., `D\n`) → wait for response
+>
+> **Example Session Start (with timing):**
+> ```
+> 1. 8\n          → wait for "8" response
+> 2. [wait ~2s]   → device processes intensity
+> 3. D\n          → wait for "D" response (stimulation active)
+> ```
+>
+> Without this delay, the device may ignore the activation command or fail to apply the specified intensity level.
 
 ### Writing Commands
 ```javascript

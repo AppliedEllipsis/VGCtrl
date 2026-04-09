@@ -35,6 +35,9 @@ class PulsettoApp {
     this._userSetIntensity = false;
     this._userSetDuration = false;  // Track if user manually set timer
 
+    // Low battery warning tracking (warn once per session)
+    this._lowBatteryWarned = false;
+
     // Audio feedback settings (toggle UI coming in T04)
     this.audioEnabled = true;
 
@@ -354,6 +357,10 @@ class PulsettoApp {
       this.isStimulationActive = false;
       this.effectiveStrength = null;
       this.activeChannel = ActiveChannel.OFF;
+
+      // Reset warning flags
+      this._lowBatteryWarned = false;
+      this._userSetIntensity = false;
       
       // Stop any running session
       if (this.clock.isRunning || this.clock.isPaused) {
@@ -1377,6 +1384,27 @@ class PulsettoApp {
           const percentage = PulsettoProtocol.Battery.calculatePercentage(parsed.value);
           this.ui.batteryLevel.textContent = `${percentage}%`;
           this.ui.batteryLevel.classList.remove('hidden');
+
+          // Color-code battery level
+          this.ui.batteryLevel.classList.remove('high', 'medium', 'low');
+          if (percentage <= 20) {
+            this.ui.batteryLevel.classList.add('low');
+            // Low battery warning (only once per session)
+            if (!this._lowBatteryWarned) {
+              this.log(`⚠️ Low battery: ${percentage}%`, 'warning');
+              this._lowBatteryWarned = true;
+            }
+          } else if (percentage <= 50) {
+            this.ui.batteryLevel.classList.add('medium');
+          } else {
+            this.ui.batteryLevel.classList.add('high');
+          }
+
+          // Reset low battery warning when charging or battery recovers
+          if (percentage > 25) {
+            this._lowBatteryWarned = false;
+          }
+
           // Always log to DOM - CSS filter controls visibility
           this.log(`Battery: ${parsed.value.toFixed(2)}V (${percentage}%)`, 'info');
         }
@@ -1385,10 +1413,13 @@ class PulsettoApp {
       case PulsettoProtocol.ResponseType.chargingStatus:
         if (parsed.value === true) {
           this.ui.chargingIndicator.classList.remove('hidden');
-          this.log('Charging: Yes', 'info');
+          this.ui.chargingIndicator.textContent = '⚡ Charging';
+          this.ui.chargingIndicator.classList.add('charging-active');
+          this.log('⚡ Device is charging', 'info');
         } else if (parsed.value === false) {
           this.ui.chargingIndicator.classList.add('hidden');
-          this.log('Charging: No', 'info');
+          this.ui.chargingIndicator.classList.remove('charging-active');
+          this.log('Charging: No (on battery)', 'info');
         }
         break;
         

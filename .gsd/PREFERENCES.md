@@ -3,10 +3,10 @@
 ## Model Configuration
 
 ### Reasoning Mode
-enabled: true
+reasoningEnabled: true
 
 ### Thinking Mode
-enabled: true
+thinkingEnabled: true
 
 ## Execution Mode
 

@@ -33,7 +33,7 @@ class PulsettoApp {
 
     // Logging state
     this.autoScroll = true;
-    this.logsExpanded = false;
+    this.logsExpanded = true;
 
     // Timers
     this.keepaliveTimer = null;

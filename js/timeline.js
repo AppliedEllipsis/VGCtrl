@@ -531,6 +531,7 @@ class SessionTimeline {
     const phaseDuration = this.state.totalDuration / phases.length;
     const phaseWidth = this.width / phases.length;
     const barY = (this.height - this.options.segmentHeight) / 2;
+    const baseStrength = this.state.baseStrength;
 
     // Draw phase segments
     phases.forEach((phase, i) => {
@@ -545,7 +546,6 @@ class SessionTimeline {
       this.ctx.fillRect(x + 1, barY, phaseWidth - 2, this.options.segmentHeight);
 
       // Draw intensity overlay (brightness = intensity level)
-      const baseStrength = this.state.baseStrength;
       const intensityOpacity = (baseStrength / 9) * 0.4; // max 40% opacity
       this.ctx.fillStyle = `rgba(255,255,255,${intensityOpacity})`;
       this.ctx.fillRect(x + 1, barY, phaseWidth - 2, this.options.segmentHeight);

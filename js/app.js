@@ -21,7 +21,7 @@ class PulsettoApp {
     this.isStimulationActive = false;
     this.activeChannel = ActiveChannel.OFF;
     this.breathingPhase = null;
-    this.channelOverride = 'auto'; // 'auto', 'left', 'right', 'bilateral'
+    this.channelOverride = 'bilateral'; // 'left', 'right', 'bilateral'
     this._isSeeking = false;
     this._seekTimeout = null;
     
@@ -167,8 +167,7 @@ class PulsettoApp {
     this.ui.modePattern = document.getElementById('mode-pattern');
     this.ui.modeTiming = document.getElementById('mode-timing');
 
-    // Channel override
-    this.ui.channelAuto = document.getElementById('channel-auto');
+    // Channel override (Left, Right, Both - no Auto)
     this.ui.channelLeft = document.getElementById('channel-left');
     this.ui.channelRight = document.getElementById('channel-right');
     this.ui.channelBoth = document.getElementById('channel-both');
@@ -224,8 +223,8 @@ class PulsettoApp {
     this.ui.btnResume.addEventListener('click', () => this.resumeSession());
     this.ui.btnStop.addEventListener('click', () => this.stopSession());
 
-    // Channel override buttons
-    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+    // Channel override buttons (Left, Right, Both - no Auto)
+    [this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
       btn?.addEventListener('click', (e) => this.setChannelOverride(e.target.dataset.channel));
     });
     
@@ -567,25 +566,13 @@ class PulsettoApp {
       this.timeline.notifyExternalChange('fade', { mode: mode });
     }
 
-    // Determine current channel
+    // Determine current channel (defaults to bilateral)
     let currentChannel = PulsettoProtocol.Commands.activateBilateral;
-    if (this.channelOverride !== 'auto') {
-      switch (this.channelOverride) {
-        case 'left': currentChannel = PulsettoProtocol.Commands.activateLeft; break;
-        case 'right': currentChannel = PulsettoProtocol.Commands.activateRight; break;
-        case 'bilateral': currentChannel = PulsettoProtocol.Commands.activateBilateral; break;
-      }
-    } else if (this.modeEngine) {
-      const result = this.modeEngine.tick(
-        this.clock.elapsedSeconds,
-        this.clock.totalDuration,
-        this.baseStrength
-      );
-      switch (result.activeChannel) {
-        case 'left': currentChannel = PulsettoProtocol.Commands.activateLeft; break;
-        case 'right': currentChannel = PulsettoProtocol.Commands.activateRight; break;
-        case 'bilateral': currentChannel = PulsettoProtocol.Commands.activateBilateral; break;
-      }
+    switch (this.channelOverride) {
+      case 'left': currentChannel = PulsettoProtocol.Commands.activateLeft; break;
+      case 'right': currentChannel = PulsettoProtocol.Commands.activateRight; break;
+      case 'bilateral':
+      default: currentChannel = PulsettoProtocol.Commands.activateBilateral;
     }
 
     const fadeCommands = [];
@@ -724,7 +711,7 @@ class PulsettoApp {
       this.timeline.notifyExternalChange('fadeComplete', {
         mode: mode,
         finalIntensity: finalIntensity,
-        finalChannel: finalIntensity > 0 ? (this.channelOverride !== 'auto' ? this.channelOverride : 'bilateral') : 'off'
+        finalChannel: finalIntensity > 0 ? this.channelOverride : 'off'
       });
     }
 
@@ -796,23 +783,27 @@ class PulsettoApp {
       this.ui.timelinePanel.classList.remove('hidden');
       // Set mode and get first script step for UI initialization
       this.timeline.setMode(this.selectedMode, duration, this.baseStrength);
-      // Read first script entry and set UI to match
+      // Read first script entry and set UI/state to match
       const firstStep = this.timeline.script?.getInstructionAt(0);
       if (firstStep) {
         this.log(`Initial script step: ${firstStep.label}, channel=${firstStep.channel}, intensity=${firstStep.intensity}`, 'info');
         // Update UI to match initial script state (don't send commands - mode engine handles that)
         this.ui.intensityValue.textContent = firstStep.intensity ?? this.baseStrength;
         this.ui.intensitySlider.value = firstStep.intensity ?? this.baseStrength;
-        // Update channel buttons to show initial channel
-        [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+        // Update channel override to match first step (map 'off' to 'bilateral')
+        const initialChannel = firstStep.channel === 'off' ? 'bilateral' : (firstStep.channel || 'bilateral');
+        this.channelOverride = initialChannel;
+        this.log(`Channel override set to: ${initialChannel}`, 'info');
+        // Update channel buttons to match
+        [this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
           if (btn) btn.classList.remove('active');
         });
         let initialBtn = null;
-        switch(firstStep.channel) {
+        switch(initialChannel) {
           case 'left': initialBtn = this.ui.channelLeft; break;
           case 'right': initialBtn = this.ui.channelRight; break;
-          case 'bilateral': initialBtn = this.ui.channelBoth; break;
-          default: initialBtn = this.ui.channelAuto;
+          case 'bilateral':
+          default: initialBtn = this.ui.channelBoth;
         }
         if (initialBtn) initialBtn.classList.add('active');
       }
@@ -826,8 +817,8 @@ class PulsettoApp {
     // Get initial commands from mode engine
     let initialCommands = this.modeEngine.start(this.baseStrength, duration);
 
-    // Apply channel override if set
-    if (this.channelOverride !== 'auto') {
+    // Apply channel override if not bilateral (default)
+    if (this.channelOverride !== 'bilateral') {
       initialCommands = applyChannelOverride(initialCommands, this.channelOverride);
     }
 
@@ -963,22 +954,24 @@ class PulsettoApp {
     }
 
     if (step.channel) {
-      [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+      [this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
         if (btn) btn.classList.remove('active');
       });
       let activeBtn = null;
       switch (step.channel) {
         case 'left': activeBtn = this.ui.channelLeft; break;
         case 'right': activeBtn = this.ui.channelRight; break;
-        case 'bilateral': activeBtn = this.ui.channelBoth; break;
-        default: activeBtn = this.ui.channelAuto;
+        case 'bilateral':
+        case 'off':
+        default: activeBtn = this.ui.channelBoth;
       }
       if (activeBtn) activeBtn.classList.add('active');
     }
 
     // Send commands on: manual seek, natural phase transition, or fade intensity change
     // Order: intensity first, then channel (matches manual button press order)
-    const shouldSendIntensity = step.intensity !== undefined && step.type !== 'rest';
+    // Note: intensity 0 is sent during rest phases (stop command), channel is not sent when 'off'
+    const shouldSendIntensity = step.intensity !== undefined;
     const shouldSendChannel = step.channel && step.channel !== 'off';
 
     if (step.isSeek) {
@@ -1002,7 +995,7 @@ class PulsettoApp {
     const fadePrefix = step.isFadeUpdate ? '[Fade] ' : '';
     const chLabel = step.channel === 'left' ? 'Left' :
                    step.channel === 'right' ? 'Right' :
-                   step.channel === 'bilateral' ? 'Both' : 'Auto';
+                   'Both';
     this.log(`${seekPrefix}${fadePrefix}Script: ${step.label} (${chLabel}, ${step.intensity})`, 'info');
   }
 
@@ -1091,8 +1084,8 @@ class PulsettoApp {
   }
 
   _updateChannelButtons() {
-    // Update channel override buttons to reflect current state (fade handled separately)
-    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+    // Update channel override buttons to reflect current state
+    [this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === this.channelOverride);
     });
   }

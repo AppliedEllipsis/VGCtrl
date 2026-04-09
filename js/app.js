@@ -129,7 +129,8 @@ class PulsettoApp {
         this.baseStrength
       );
       
-      if (this.channelOverride !== 'auto') {
+      // Apply channel override if set (skip for 'fade' since it's a one-time action)
+      if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
         commands = applyChannelOverride(commands, this.channelOverride);
       }
       
@@ -680,8 +681,8 @@ class PulsettoApp {
     // Get initial commands
     let initialCommands = this.modeEngine.start(this.baseStrength, duration);
 
-    // Apply channel override if set
-    if (this.channelOverride !== 'auto') {
+    // Apply channel override if set (skip for 'fade' since it's a one-time action)
+    if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
       initialCommands = applyChannelOverride(initialCommands, this.channelOverride);
     }
 
@@ -772,9 +773,9 @@ class PulsettoApp {
       this.baseStrength
     );
 
-    // Apply channel override if set
+    // Apply channel override if set (skip for 'fade' since it's a one-time action)
     let commands = result.commands;
-    if (this.channelOverride !== 'auto' && commands.length > 0) {
+    if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade' && commands.length > 0) {
       commands = applyChannelOverride(commands, this.channelOverride);
     }
 
@@ -845,7 +846,7 @@ class PulsettoApp {
         
         // Determine current channel
         let channelCmd;
-        if (this.channelOverride !== 'auto') {
+        if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
           switch (this.channelOverride) {
             case 'left': channelCmd = PulsettoProtocol.Commands.activateLeft; break;
             case 'right': channelCmd = PulsettoProtocol.Commands.activateRight; break;

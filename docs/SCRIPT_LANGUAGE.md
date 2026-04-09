@@ -49,13 +49,13 @@ Now it loops forever (well, until your session ends).
 Must be on its own line, in brackets. Everything after this belongs to this mode.
 
 ### `mode(intensity, channel)` - Turn On/Off
-- **intensity**: 0-9 (absolute) or 0%-100% (relative to user's choice)
+- **intensity**: 0-9 (device level) or 0%-100% (relative to user's chosen intensity)
 - **channel**: `left`, `right`, `both`, `off`, or `none` (none maps to both for UX)
 
 The channel parameter is optional and defaults to `both`. Use `off` or `none` when stopping, or omit the channel entirely.
 
 Examples:
-- `mode(5)` or `mode(5, both)` - Half power on both sides (implicit both)
+- `mode(5)` or `mode(5, both)` - Device level 5 on both sides (implicit both)
 - `mode(100%, left)` - User's chosen intensity, left only
 - `mode(0%)` or `mode(0%, off)` - Stop (no channel specified = both in UX)
 - `mode(0%, none)` - Stop with explicit "none" direction (maps to "both" in UX)
@@ -109,21 +109,41 @@ end
 ### `suggested_intensity(1-9)` - Suggest Starting Level
 Tells the app what intensity slider position to show when this mode is selected. User can still change it.
 
-## Intensity: Absolute vs Relative
+### `rounding_rule(nearest|low|high)` - Rounding Strategy
+Controls how relative percentages (like `50%`) get converted to device levels 0-9:
+- **nearest** (default): Round to closest level (4.5 → 5)
+- **low**: Always round down (4.9 → 4)
+- **high**: Always round up (4.1 → 5)
 
-**Absolute** (simple numbers): Direct device power level
-- `mode(5, both)` = 5 out of 9, period
-- `fade(7, 10s)` = fade to exactly 7
+Examples:
+```
+rounding_rule(nearest)  # 50% of 7 = 3.5 → 4
+rounding_rule(low)      # 50% of 7 = 3.5 → 3
+rounding_rule(high)     # 50% of 7 = 3.5 → 4
+```
 
-**Relative** (percentages): Based on user's chosen intensity
+## Intensity: Device Level vs Percentage
+
+**Device Level** (0-9): Direct control of the device's power levels
+- `mode(5, both)` = exactly level 5 out of 9
+- `fade(7, 10s)` = fade to exactly level 7
+- `mode(0)` = stop (same as `mode(0, off)`)
+
+**Percentage** (%): Relative to user's chosen starting intensity
 - `mode(100%, both)` = user's full chosen intensity
-- `mode(50%, both)` = half of user's chosen intensity
+- `mode(50%, both)` = half of user's chosen intensity  
 - Useful for scripts that adapt to user preference!
 
-### Bounds Protection
-If a calculation goes below 1 or above 9, it gets clamped:
-- `50%` of user setting `1` → `1` (not 0.5!)
-- `150%` of user setting `8` → `9` (not 12!)
+### Bounds and Rounding
+Percentages are first calculated, then clamped to 0-9, then rounded according to `rounding_rule`:
+
+| User Setting | Percentage | Raw | Clamp | nearest | low | high |
+|--------------|------------|-----|-------|---------|-----|------|
+| 7 | 50% | 3.5 | 3.5 | 4 | 3 | 4 |
+| 5 | 150% | 7.5 | 7.5 | 8 | 7 | 8 |
+| 1 | 50% | 0.5 | 0.5 | 1 | 0 | 1 |
+
+Default is `nearest`. Use `low` for gentler rounding, `high` for stronger rounding.
 
 ## Time: Absolute vs Relative vs Session
 

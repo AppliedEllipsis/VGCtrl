@@ -44,16 +44,17 @@
  * === COMMANDS ===
  * 
  * [Mode Name]          - Starts a new mode script (must be first thing on line)
- * mode(int, ch)        - Turn on with intensity (1-9 or %), channel (left/right/both/off/none)
+ * mode(int, ch)        - Turn on with intensity (0-9 or %), channel (left/right/both/off/none)
  * wait(time)           - Do nothing for X seconds, % of session, or 'session' for all remaining time
  * fade(to, over)       - Gradually change intensity over time
  * repeat(type)         - Start repeating a section
  * end                  - End the repeat section
  * suggested_intensity  - What intensity the user should start at (they can override)
+ * rounding_rule(rule)  - How to round percentages: nearest (default), low, high
  * 
  * === SPECIAL VALUES ===
  * 
- * Intensity: 1-9, or 11%-100% (percentage of user's chosen intensity)
+ * Intensity: 0-9 (device level), or 0%-100% (percentage of user's chosen intensity)
  * Time: 1s, 5s, 30s, 1m, 5m (seconds or minutes)
  *      or 10%, 20% (percentage of total session time)
  *      or 'session' (all remaining time)
@@ -102,7 +103,12 @@ class ScriptValidator {
       'strech': 'stretch',
       'session': 'session',
       'version': 'ver',
-      'v': 'ver'
+      'v': 'ver',
+      'round': 'rounding_rule',
+      'rounding': 'rounding_rule',
+      'near': 'nearest',
+      'floor': 'low',
+      'ceil': 'high'
     };
   }
 
@@ -313,6 +319,13 @@ class ScriptValidator {
         }
         break;
 
+      case 'rounding_rule':
+        const roundingMatch = fullCmd.match(/rounding_rule\s*\(\s*(nearest|low|high)\s*\)/i);
+        if (!roundingMatch) {
+          errors.push({ line: lineNum, message: 'rounding_rule() needs "nearest", "low", or "high". Example: rounding_rule(nearest)', code: 'BAD_ROUNDING_RULE' });
+        }
+        break;
+
       case 'ver':
         const verMatch = fullCmd.match(/ver\s*\(\s*(\d+)\s*\)/i);
         if (!verMatch) {
@@ -405,6 +418,7 @@ class ScriptEngine {
           currentMode = {
             name: match[1].trim(),
             suggestedIntensity: null,
+            roundingRule: 'nearest',
             instructions: []
           };
         }
@@ -417,7 +431,15 @@ class ScriptEngine {
       const commands = this._splitCommands(trimmed);
       for (const cmd of commands) {
         const parsed = this._parseCommand(cmd);
-        if (parsed) currentMode.instructions.push(parsed);
+        if (!parsed) continue;
+        // Store rounding_rule at mode level, not in instructions
+        if (parsed.type === 'rounding_rule') {
+          currentMode.roundingRule = parsed.rule;
+        } else if (parsed.type === 'suggested_intensity') {
+          currentMode.suggestedIntensity = parsed.value;
+        } else {
+          currentMode.instructions.push(parsed);
+        }
       }
     }
 
@@ -500,6 +522,12 @@ class ScriptEngine {
           value: parseInt(args[0]) || 5
         };
 
+      case 'rounding_rule':
+        return {
+          type: 'rounding_rule',
+          rule: args[0]?.toLowerCase() || 'nearest'
+        };
+
       case 'ver':
         return {
           type: 'ver',
@@ -570,7 +598,8 @@ class ScriptEngine {
       elapsedSeconds, 
       totalDuration, 
       baseIntensity,
-      loopInfo
+      loopInfo,
+      mode.roundingRule
     );
 
     // Build state
@@ -649,7 +678,7 @@ class ScriptEngine {
     return loops;
   }
 
-  _findPosition(instructions, elapsed, totalDuration, baseIntensity, loopInfo) {
+  _findPosition(instructions, elapsed, totalDuration, baseIntensity, loopInfo, roundingRule) {
     let currentTime = 0;
     let intensity = baseIntensity;
     let channel = 'D\n';
@@ -698,8 +727,9 @@ class ScriptEngine {
           break;
 
         case 'mode':
-          intensity = this._calculateIntensity(inst.intensity, baseIntensity);
-          channel = inst.channel;
+          intensity = this._calculateIntensity(inst.intensity, baseIntensity, roundingRule);
+          // If intensity is 0, device is stopped - show 'both' in UX regardless of specified channel
+          channel = intensity === 0 ? 'D\n' : inst.channel;
           position.sendCommands = true;
           position.phaseDescription = `Mode: ${Math.round(intensity)}% ${this._channelToName(channel)}`;
           break;
@@ -716,7 +746,7 @@ class ScriptEngine {
 
         case 'fade':
           const fadeDuration = this._resolveTime(inst.duration, totalDuration, inLoop);
-          const targetIntensity = this._calculateIntensity(inst.toIntensity, baseIntensity);
+          const targetIntensity = this._calculateIntensity(inst.toIntensity, baseIntensity, roundingRule);
           
           if (currentTime + fadeDuration > elapsed) {
             // We're inside this fade - interpolate
@@ -755,12 +785,25 @@ class ScriptEngine {
     return timeSpec.seconds || 0;
   }
 
-  _calculateIntensity(spec, baseIntensity) {
+  _calculateIntensity(spec, baseIntensity, roundingRule = 'nearest') {
     if (spec.type === 'relative') {
       const calculated = baseIntensity * (spec.percent / 100);
-      return Math.max(1, Math.min(9, calculated));
+      const clamped = Math.max(0, Math.min(9, calculated));
+      // Apply rounding rule for final device level
+      return this._applyRounding(clamped, roundingRule);
     }
+    // Absolute values are clamped only
     return Math.max(0, Math.min(9, spec.value));
+  }
+
+  _applyRounding(value, rule) {
+    switch (rule) {
+      case 'low': return Math.floor(value);
+      case 'high': return Math.ceil(value);
+      case 'nearest':
+      default:
+        return Math.round(value);
+    }
   }
 
   _channelToName(channel) {

@@ -113,11 +113,6 @@ class PulsettoApp {
   async _executeSeek(clamped, doneCallback = null) {
     const wasRunning = this.clock.isRunning;
 
-    // Notify timeline state manager of seek (updates expected state)
-    if (this.timeline) {
-      this.timeline.seek(clamped);
-    }
-
     if (wasRunning) {
       // Pause briefly while seeking
       this.clock.pause();
@@ -131,42 +126,21 @@ class PulsettoApp {
     this.clock.sessionStartTime = now - newElapsedMs - this.clock.accumulatedPauseTime;
     this.clock.elapsedSeconds = clamped;
     this.clock.remainingSeconds = this.clock.totalDuration - clamped;
-    
-    // Send updated commands to device for the new position
-    if (this.modeEngine && this.ble.canSendCommands) {
-      let commands = this.modeEngine.reconnectCommands(
-        clamped,
-        this.clock.totalDuration,
-        this.baseStrength
-      );
-      
-      // Apply channel override if set
-      if (this.channelOverride !== 'auto') {
-        commands = applyChannelOverride(commands, this.channelOverride);
-      }
-      
-      if (commands.length > 0) {
-        // Wait for any pending/in-flight commands to complete before seeking
-        // This prevents interleaving seek commands with ongoing sequences
-        await this.ble.waitForCommandsComplete(5000);
-        
-        // Clear any remaining pending commands (just in case)
-        this.ble.clearCommandQueue();
-        
-        // Send seek commands with standard 2s delays between them
-        for (const cmd of commands) {
-          await this.ble.sendCommand(cmd);
-          if (cmd !== commands[commands.length - 1]) {
-            await new Promise(r => setTimeout(r, 2000));
-          }
-        }
-        
-        this.isStimulationActive = !commands.includes(PulsettoProtocol.Commands.stop);
-        this.log(`Seek: ${this._formatTime(clamped)}`, 'info');
-      }
+
+    // Wait for pending commands to complete, then clear queue
+    if (this.ble.canSendCommands) {
+      await this.ble.waitForCommandsComplete(5000);
+      this.ble.clearCommandQueue();
     }
     
-    // Update timeline (which will clear seeking flag via callback)
+    // Notify timeline state manager of seek - it will calculate expected state 
+    // and send correction commands (respecting channel override internally)
+    if (this.timeline) {
+      this.timeline.seek(clamped);
+      this.log(`Seek: ${this._formatTime(clamped)}`, 'info');
+    }
+    
+    // Update timeline visual
     this.timeline.updateProgress(clamped, wasRunning);
     
     // Signal seek complete to timeline
@@ -541,52 +515,15 @@ class PulsettoApp {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === channel);
     });
 
-    // Notify timeline state manager of external channel change
+    // Notify timeline state manager of channel override
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
     if (sessionActive && this.timeline) {
-      this.timeline.notifyExternalChange('channel', channel === 'auto' ? 'auto' : channel);
+      this.timeline.setChannelOverride(channel);
     }
 
-    // If session is active (running or paused), send channel command with 2s delay then intensity
-    if (sessionActive && this.ble.canSendCommands) {
-      // Determine target activation command
-      let targetCmd;
-      let effectiveChannel = channel;
-      switch (channel) {
-        case 'left': targetCmd = PulsettoProtocol.Commands.activateLeft; break;
-        case 'right': targetCmd = PulsettoProtocol.Commands.activateRight; break;
-        case 'bilateral': targetCmd = PulsettoProtocol.Commands.activateBilateral; break;
-        default:
-          // For 'auto', use the mode engine's current channel preference
-          if (this.modeEngine) {
-            const result = this.modeEngine.tick(
-              this.clock.elapsedSeconds,
-              this.clock.totalDuration,
-              this.baseStrength
-            );
-            switch (result.activeChannel) {
-              case 'left': targetCmd = PulsettoProtocol.Commands.activateLeft; break;
-              case 'right': targetCmd = PulsettoProtocol.Commands.activateRight; break;
-              case 'bilateral': targetCmd = PulsettoProtocol.Commands.activateBilateral; break;
-              default: targetCmd = PulsettoProtocol.Commands.stop;
-            }
-            effectiveChannel = result.activeChannel;
-          }
-      }
-
-      if (targetCmd) {
-        // Queue channel command (debounced, will coalesce with intensity)
-        this.ble.queueChannel(targetCmd);
-        // Always queue intensity after channel change
-        this.ble.queueIntensity(PulsettoProtocol.Commands.intensity(this.baseStrength));
-        this.isStimulationActive = targetCmd !== PulsettoProtocol.Commands.stop;
-        this.log(`Channel: ${channel}`, 'info');
-
-        // Update timeline with effective channel (not 'auto')
-        if (this.timeline && effectiveChannel && effectiveChannel !== 'auto') {
-          this.timeline.notifyExternalChange('channel', effectiveChannel);
-        }
-      }
+    // Log the change (actual commands sent by state manager)
+    if (sessionActive) {
+      this.log(`Channel: ${channel}`, 'info');
     } else {
       this.log(`Channel: ${channel} (${sessionActive ? 'will apply on resume' : 'ready'})`, 'info');
     }
@@ -851,18 +788,10 @@ class PulsettoApp {
       this._cancelFade();
     }
 
-    // Queue intensity command (debounced, coalesces with pending channel)
+    // Notify timeline state manager of intensity change (handles command queuing)
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
-    if (this.ble.canSendCommands && sessionActive) {
-      this.ble.queueIntensity(PulsettoProtocol.Commands.intensity(this.baseStrength));
-      // Update stimulation state based on intensity
-      this.isStimulationActive = value > 0;
-      // Don't log here - the manager will process it
-    }
-
-    // Notify timeline state manager of external intensity change
     if (sessionActive && this.timeline) {
-      this.timeline.notifyExternalChange('intensity', value);
+      this.timeline.setIntensity(value);
     }
   }
 
@@ -986,9 +915,10 @@ class PulsettoApp {
     }
   }
 
-  // Mode engine tick processing
+  // Mode engine tick processing - updates UI state only
+  // Command sending is now handled by TimelineStateManager's scheduled ticks
   _processModeTick(elapsed) {
-    // Skip if currently seeking - seek will send its own commands
+    // Skip if currently seeking - state manager handles seek
     if (this._isSeeking) return;
     
     const result = this.modeEngine.tick(
@@ -996,30 +926,8 @@ class PulsettoApp {
       this.clock.totalDuration,
       this.baseStrength
     );
-
-    // Apply channel override if set
-    let commands = result.commands;
-    if (this.channelOverride !== 'auto' && commands.length > 0) {
-      commands = applyChannelOverride(commands, this.channelOverride);
-    }
-
-    // Queue commands (coalesced with any pending user changes)
-    if (commands.length > 0 && this.ble.canSendCommands) {
-      // Only send if not currently processing user-triggered commands
-      // The manager will coalesce these with any pending user channel/intensity changes
-      for (const cmd of commands) {
-        if (cmd === PulsettoProtocol.Commands.activateLeft ||
-            cmd === PulsettoProtocol.Commands.activateRight ||
-            cmd === PulsettoProtocol.Commands.activateBilateral ||
-            cmd === PulsettoProtocol.Commands.stop) {
-          this.ble.queueChannel(cmd);
-        } else if (/^[1-9]\n$/.test(cmd)) {
-          this.ble.queueIntensity(cmd);
-        }
-      }
-    }
     
-    // Update state
+    // Update UI state only (commands handled by TimelineStateManager)
     this.isStimulationActive = result.isStimulationActive;
     this.effectiveStrength = result.effectiveStrength;
     this.activeChannel = result.activeChannel;
@@ -1030,81 +938,21 @@ class PulsettoApp {
   }
 
   _resumeSessionOnDevice() {
-    if (!this.modeEngine) return;
-
-    const elapsed = this.clock.elapsedSeconds;
-    let commands = this.modeEngine.reconnectCommands(
-      elapsed,
-      this.clock.totalDuration,
-      this.baseStrength
-    );
-
-    // Apply channel override if set
-    if (this.channelOverride !== 'auto') {
-      commands = applyChannelOverride(commands, this.channelOverride);
-    }
-
-    if (commands.length > 0 && this.ble.canSendCommands) {
-      // Queue resume commands
-      for (const cmd of commands) {
-        if (cmd === PulsettoProtocol.Commands.activateLeft ||
-            cmd === PulsettoProtocol.Commands.activateRight ||
-            cmd === PulsettoProtocol.Commands.activateBilateral ||
-            cmd === PulsettoProtocol.Commands.stop) {
-          this.ble.queueChannel(cmd);
-        } else if (/^[1-9]\n$/.test(cmd)) {
-          this.ble.queueIntensity(cmd);
-        }
-      }
+    // Let the timeline state manager handle resuming - it will calculate
+    // expected state and send correction commands
+    if (this.timeline) {
+      this.timeline.seek(this.clock.elapsedSeconds);
     }
   }
 
-  // Keepalive
+  // Keepalive - DEPRECATED: TimelineStateManager now handles command scheduling
+  // These methods are kept for compatibility but do nothing
   _startKeepalive() {
-    this._stopKeepalive();
-    
-    const interval = PulsettoProtocol.Timing.keepaliveIntervalSeconds * 1000;
-    this.keepaliveTimer = setInterval(() => {
-      if (this.ble.canSendCommands && this.clock.isRunning && this.isStimulationActive) {
-        const strength = this.effectiveStrength || this.baseStrength;
-        
-        // Determine current channel
-        let channelCmd;
-        if (this.channelOverride !== 'auto') {
-          switch (this.channelOverride) {
-            case 'left': channelCmd = PulsettoProtocol.Commands.activateLeft; break;
-            case 'right': channelCmd = PulsettoProtocol.Commands.activateRight; break;
-            case 'bilateral': channelCmd = PulsettoProtocol.Commands.activateBilateral; break;
-            default: channelCmd = null;
-          }
-        } else if (this.modeEngine) {
-          const result = this.modeEngine.tick(
-            this.clock.elapsedSeconds,
-            this.clock.totalDuration,
-            this.baseStrength
-          );
-          switch (result.activeChannel) {
-            case 'left': channelCmd = PulsettoProtocol.Commands.activateLeft; break;
-            case 'right': channelCmd = PulsettoProtocol.Commands.activateRight; break;
-            case 'bilateral': channelCmd = PulsettoProtocol.Commands.activateBilateral; break;
-            default: channelCmd = null;
-          }
-        }
-        
-        if (channelCmd) {
-          // Queue keepalive commands (low priority, will coalesce with user changes)
-          this.ble.queueChannel(channelCmd);
-          this.ble.queueIntensity(PulsettoProtocol.Commands.keepalive(strength));
-        }
-      }
-    }, interval);
+    // No-op: TimelineStateManager handles periodic command scheduling
   }
 
   _stopKeepalive() {
-    if (this.keepaliveTimer) {
-      clearInterval(this.keepaliveTimer);
-      this.keepaliveTimer = null;
-    }
+    // No-op: TimelineStateManager handles its own lifecycle
   }
 
   // Status polling

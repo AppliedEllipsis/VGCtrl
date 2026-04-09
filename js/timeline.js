@@ -286,13 +286,15 @@ class SessionTimeline {
    * Start timeline tracking with state manager
    */
   startTracking(ble, clock) {
-    // Initialize state manager
+    // Initialize state manager with command scheduling config
     this.stateManager = new TimelineStateManager({
       ble: ble,
       clock: clock,
-      heartbeatIntervalMs: this.options.heartbeatIntervalMs,
+      tickIntervalMs: 5000,        // Tick every 5 seconds since last command
+      transitionWindowMs: 3000,      // Defer if transition within 3 seconds
+      minCommandSpacingMs: 2000,   // 2 seconds between commands
       onStateChange: (change) => this._onStateChange(change),
-      onHeartbeat: (data) => this._onHeartbeat(data)
+      onCommandScheduled: (data) => this._onCommandScheduled(data)
     });
 
     this.stateManager.start(this.state.mode, this.state.totalDuration, this.state.baseStrength);
@@ -327,12 +329,30 @@ class SessionTimeline {
   }
 
   /**
-   * Notify state manager of external changes (manual controls)
+   * Set channel override (takes precedence over timeline zones)
+   */
+  setChannelOverride(channel) {
+    if (this.stateManager) {
+      this.stateManager.setChannelOverride(channel);
+    }
+  }
+
+  /**
+   * Set intensity directly
+   */
+  setIntensity(intensity) {
+    if (this.stateManager) {
+      this.stateManager.setIntensity(intensity);
+    }
+  }
+
+  /**
+   * Generic external change notification (for fade, etc.)
+   * These are informational - actual commands handled by app.js
    */
   notifyExternalChange(type, value) {
-    if (this.stateManager) {
-      this.stateManager.notifyExternalChange(type, value);
-    }
+    console.log('[Timeline] External change:', type, value);
+    // Could trigger visual feedback in the future
   }
 
   /**
@@ -342,14 +362,23 @@ class SessionTimeline {
     return this.stateManager ? this.stateManager.getExpectedState() : null;
   }
 
+  /**
+   * Seek to new position - state manager recalculates and sends commands
+   */
+  seek(elapsedSeconds) {
+    if (this.stateManager) {
+      this.stateManager.seek(elapsedSeconds);
+    }
+  }
+
   _onStateChange(change) {
     // Visual feedback for state changes could go here
     console.log('[Timeline] State change:', change);
   }
 
-  _onHeartbeat(data) {
-    // Visual feedback for heartbeat could go here
-    // console.log('[Timeline] Heartbeat:', data);
+  _onCommandScheduled(data) {
+    // Visual feedback for scheduled commands could go here
+    // console.log('[Timeline] Command scheduled:', data);
   }
 
   updateProgress(elapsed, isPlaying = true) {

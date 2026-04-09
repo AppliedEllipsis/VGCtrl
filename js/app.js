@@ -31,6 +31,9 @@ class PulsettoApp {
     this._fadeExecuting = false; // true while fade is actively running
     this._lastFadeIntensity = null; // track last intensity set by fade
 
+    // Track if user manually set intensity (preserved across mode changes until connect)
+    this._userSetIntensity = false;
+
     // Logging state
     this.autoScroll = true;
     this.logsExpanded = true;
@@ -148,6 +151,7 @@ class PulsettoApp {
     // Status bar
     this.ui.connectionStatus = document.getElementById('connection-status');
     this.ui.statusText = document.getElementById('status-text');
+    this.ui.phaseCountdown = document.getElementById('phase-countdown');
     this.ui.batteryLevel = document.getElementById('battery-level');
     this.ui.chargingIndicator = document.getElementById('charging-indicator');
     
@@ -384,6 +388,9 @@ class PulsettoApp {
       
       this._updateActionButtons();
       this._resetSessionUI();
+      
+      // Reset user intensity flag so next session starts fresh with mode defaults
+      this._userSetIntensity = false;
     });
     
     this.clock.on('completed', () => {
@@ -396,6 +403,9 @@ class PulsettoApp {
       
       this._updateActionButtons();
       this._resetSessionUI();
+      
+      // Reset user intensity flag so next session starts fresh with mode defaults
+      this._userSetIntensity = false;
     });
     
     this.clock.on('backgrounded', () => {
@@ -435,11 +445,15 @@ class PulsettoApp {
 
     if (modeConfig && !this.clock.isRunning && !this.clock.isPaused) {
       this.timerMinutes = modeConfig.duration;
-      this.baseStrength = modeConfig.strength;
+      // Preserve user-set intensity - only update if never manually set (default is 8 from constructor)
+      // User can pre-set intensity before connect; mode default only applies on fresh load
+      if (!this._userSetIntensity) {
+        this.baseStrength = modeConfig.strength;
+        this.ui.intensitySlider.value = this.baseStrength;
+        this.ui.intensityValue.textContent = this.baseStrength;
+      }
 
       this.ui.timerSlider.value = this.timerMinutes;
-      this.ui.intensitySlider.value = this.baseStrength;
-      this.ui.intensityValue.textContent = this.baseStrength;
       this.ui.timerValue.textContent = SessionClock.formatTime(this.timerMinutes * 60);
     }
 
@@ -767,6 +781,7 @@ class PulsettoApp {
     }
 
     this.baseStrength = value;
+    this._userSetIntensity = true; // Mark as manually set by user
     this.ui.intensityValue.textContent = value;
 
     // Cancel any active fade when user manually sets intensity
@@ -949,19 +964,28 @@ class PulsettoApp {
   _processModeTick(elapsed) {
     // Skip if currently seeking - state manager handles seek
     if (this._isSeeking) return;
-    
+
     const result = this.modeEngine.tick(
       elapsed,
       this.clock.totalDuration,
       this.baseStrength
     );
-    
+
     // Update UI state only (commands handled by TimelineStateManager)
     this.isStimulationActive = result.isStimulationActive;
     this.effectiveStrength = result.effectiveStrength;
     this.activeChannel = result.activeChannel;
     this.breathingPhase = result.breathingPhase;
-    
+
+    // Update phase countdown if available
+    if (result.timeUntilNextPhase !== null && result.timeUntilNextPhase !== undefined) {
+      const seconds = Math.ceil(result.timeUntilNextPhase);
+      this.ui.phaseCountdown.textContent = `next: ${seconds}s`;
+      this.ui.phaseCountdown.classList.remove('hidden');
+    } else {
+      this.ui.phaseCountdown.classList.add('hidden');
+    }
+
     // Update breathing UI
     this._updateBreathingAnimation(result);
   }
@@ -1190,7 +1214,7 @@ class PulsettoApp {
   _enableSessionControls(enabled) {
     this.ui.modeSelect.disabled = !enabled;
     this.ui.timerSlider.disabled = !enabled;
-    this.ui.intensitySlider.disabled = !enabled;
+    // Intensity slider always enabled - allows pre-setting before connect
     this.ui.btnTimerUp.disabled = !enabled;
     this.ui.btnTimerDown.disabled = !enabled;
     this.ui.btnStart.disabled = !enabled;
@@ -1233,6 +1257,7 @@ class PulsettoApp {
     this.ui.progressFill.style.width = '0%';
     this.ui.timerValue.textContent = SessionClock.formatTime(this.timerMinutes * 60);
     this.ui.breathingCircle.classList.remove('inhale', 'hold', 'exhale');
+    this.ui.phaseCountdown.classList.add('hidden');
 
     // Stop timeline tracking (but keep timeline visible for review)
     if (this.timeline) {

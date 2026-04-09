@@ -161,38 +161,89 @@ class TimelineScript {
   }
 
   /**
-   * Focus Both mode: Continuous bilateral (no pauses)
+   * Focus Both mode: 30s ON bilateral / 30s OFF cycles
    */
   _generateFocusBothScript() {
-    return [{
-      start: 0,
-      end: this.totalDuration,
-      channel: 'bilateral',
-      intensity: this.baseStrength,
-      label: 'ON',
-      type: 'active'
-    }];
+    const cycleDuration = 60; // 30s on, 30s off
+    const numCycles = Math.ceil(this.totalDuration / cycleDuration);
+    const instructions = [];
+
+    for (let i = 0; i < numCycles; i++) {
+      const cycleStart = i * cycleDuration;
+      const onEnd = Math.min(cycleStart + 30, this.totalDuration);
+      const cycleEnd = Math.min(cycleStart + cycleDuration, this.totalDuration);
+
+      if (onEnd > cycleStart) {
+        instructions.push({
+          start: cycleStart,
+          end: onEnd,
+          channel: 'bilateral',
+          intensity: this.baseStrength,
+          label: 'ON',
+          type: 'active'
+        });
+      }
+
+      if (cycleEnd > onEnd) {
+        instructions.push({
+          start: onEnd,
+          end: cycleEnd,
+          channel: 'off',
+          intensity: 0,
+          label: 'REST',
+          type: 'rest'
+        });
+      }
+    }
+
+    return instructions;
   }
 
   /**
    * Focus Alt mode: Left (30s) → Rest (15s) → Right (30s) → Rest (15s) → repeat
    */
   _generateFocusAltScript() {
-    const cycleDuration = 90; // 30s left + 15s rest + 30s right + 15s rest
+    const cycleDuration = 135; // 30s both + 15s pause + 30s left + 15s pause + 30s right + 15s pause
     const numCycles = Math.ceil(this.totalDuration / cycleDuration);
     const instructions = [];
 
     for (let i = 0; i < numCycles; i++) {
       const cycleStart = i * cycleDuration;
-      const leftEnd = Math.min(cycleStart + 30, this.totalDuration);
-      const rest1End = Math.min(cycleStart + 45, this.totalDuration);
-      const rightEnd = Math.min(cycleStart + 75, this.totalDuration);
+      const bothEnd = Math.min(cycleStart + 30, this.totalDuration);
+      const pause1End = Math.min(cycleStart + 45, this.totalDuration);
+      const leftEnd = Math.min(cycleStart + 75, this.totalDuration);
+      const pause2End = Math.min(cycleStart + 90, this.totalDuration);
+      const rightEnd = Math.min(cycleStart + 120, this.totalDuration);
       const cycleEnd = Math.min(cycleStart + cycleDuration, this.totalDuration);
 
-      // Left phase (0-30s)
-      if (leftEnd > cycleStart) {
+      // Both phase (0-30s)
+      if (bothEnd > cycleStart) {
         instructions.push({
           start: cycleStart,
+          end: bothEnd,
+          channel: 'bilateral',
+          intensity: this.baseStrength,
+          label: 'Both',
+          type: 'active'
+        });
+      }
+
+      // Pause after both (30-45s)
+      if (pause1End > bothEnd) {
+        instructions.push({
+          start: bothEnd,
+          end: pause1End,
+          channel: 'off',
+          intensity: 0,
+          label: 'Pause',
+          type: 'rest'
+        });
+      }
+
+      // Left phase (45-75s)
+      if (leftEnd > pause1End) {
+        instructions.push({
+          start: pause1End,
           end: leftEnd,
           channel: 'left',
           intensity: this.baseStrength,
@@ -201,22 +252,22 @@ class TimelineScript {
         });
       }
 
-      // Rest after left (30-45s)
-      if (rest1End > leftEnd) {
+      // Pause after left (75-90s)
+      if (pause2End > leftEnd) {
         instructions.push({
           start: leftEnd,
-          end: rest1End,
+          end: pause2End,
           channel: 'off',
           intensity: 0,
-          label: 'Rest',
+          label: 'Pause',
           type: 'rest'
         });
       }
 
-      // Right phase (45-75s)
-      if (rightEnd > rest1End) {
+      // Right phase (90-120s)
+      if (rightEnd > pause2End) {
         instructions.push({
-          start: rest1End,
+          start: pause2End,
           end: rightEnd,
           channel: 'right',
           intensity: this.baseStrength,
@@ -225,14 +276,14 @@ class TimelineScript {
         });
       }
 
-      // Rest after right (75-90s)
+      // Pause after right (120-135s)
       if (cycleEnd > rightEnd) {
         instructions.push({
           start: rightEnd,
           end: cycleEnd,
           channel: 'off',
           intensity: 0,
-          label: 'Rest',
+          label: 'Pause',
           type: 'rest'
         });
       }

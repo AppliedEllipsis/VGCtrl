@@ -29,7 +29,8 @@ class ModeTickResult {
     activeChannel = ActiveChannel.OFF,
     breathingPhase = null,
     breathingProgress = 0,
-    statusText = ''
+    statusText = '',
+    timeUntilNextPhase = null
   }) {
     this.commands = commands;
     this.isStimulationActive = isStimulationActive;
@@ -38,6 +39,7 @@ class ModeTickResult {
     this.breathingPhase = breathingPhase;
     this.breathingProgress = breathingProgress;
     this.statusText = statusText;
+    this.timeUntilNextPhase = timeUntilNextPhase; // seconds until next phase change
   }
 }
 
@@ -76,12 +78,16 @@ class StressReliefEngine extends ModeEngine {
   }
 
   tick(elapsed, totalDuration, baseStrength) {
+    // Countdown to session end
+    const timeUntilNextPhase = totalDuration - elapsed;
+
     return new ModeTickResult({
       commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
       isStimulationActive: true,
       effectiveStrength: baseStrength,
       activeChannel: ActiveChannel.BILATERAL,
-      statusText: 'Bilateral · Continuous'
+      statusText: 'Bilateral · Continuous',
+      timeUntilNextPhase
     });
   }
 
@@ -127,12 +133,16 @@ class SleepEngine extends ModeEngine {
 
     const fadeNote = fadeStrength < baseStrength ? ' · Fading' : '';
 
+    // Countdown to next phase transition
+    const timeUntilNextPhase = ((phaseIndex + 1) * phaseDuration) - elapsed;
+
     return new ModeTickResult({
       commands,
       isStimulationActive: true,
       effectiveStrength: fadeStrength !== baseStrength ? fadeStrength : null,
       activeChannel: ActiveChannel.BILATERAL,
-      statusText: `Sleep · Phase ${phaseIndex + 1}/${this.phases.length}${fadeNote}`
+      statusText: `Sleep · Phase ${phaseIndex + 1}/${this.phases.length}${fadeNote}`,
+      timeUntilNextPhase
     });
   }
 
@@ -193,7 +203,9 @@ class FocusEngine extends ModeEngine {
 
   tick(elapsed, totalDuration, baseStrength) {
     const dutyCycle = 30; // 30 seconds on, 30 seconds off
+    const positionInPhase = elapsed % dutyCycle;
     const isOnPhase = Math.floor(elapsed / dutyCycle) % 2 === 0;
+    const timeUntilNextPhase = dutyCycle - positionInPhase;
 
     if (isOnPhase) {
       return new ModeTickResult({
@@ -201,7 +213,8 @@ class FocusEngine extends ModeEngine {
         isStimulationActive: true,
         effectiveStrength: baseStrength,
         activeChannel: ActiveChannel.LEFT,
-        statusText: 'Focus · Active'
+        statusText: 'Focus · Active',
+        timeUntilNextPhase
       });
     } else {
       return new ModeTickResult({
@@ -209,7 +222,8 @@ class FocusEngine extends ModeEngine {
         isStimulationActive: false,
         effectiveStrength: null,
         activeChannel: ActiveChannel.OFF,
-        statusText: 'Focus · Rest'
+        statusText: 'Focus · Rest',
+        timeUntilNextPhase
       });
     }
   }
@@ -239,7 +253,9 @@ class FocusRightEngine extends ModeEngine {
 
   tick(elapsed, totalDuration, baseStrength) {
     const dutyCycle = 30; // 30 seconds on, 30 seconds off
+    const positionInPhase = elapsed % dutyCycle;
     const isOnPhase = Math.floor(elapsed / dutyCycle) % 2 === 0;
+    const timeUntilNextPhase = dutyCycle - positionInPhase;
 
     if (isOnPhase) {
       return new ModeTickResult({
@@ -247,7 +263,8 @@ class FocusRightEngine extends ModeEngine {
         isStimulationActive: true,
         effectiveStrength: baseStrength,
         activeChannel: ActiveChannel.RIGHT,
-        statusText: 'Focus R · Active'
+        statusText: 'Focus R · Active',
+        timeUntilNextPhase
       });
     } else {
       return new ModeTickResult({
@@ -255,7 +272,8 @@ class FocusRightEngine extends ModeEngine {
         isStimulationActive: false,
         effectiveStrength: null,
         activeChannel: ActiveChannel.OFF,
-        statusText: 'Focus R · Rest'
+        statusText: 'Focus R · Rest',
+        timeUntilNextPhase
       });
     }
   }
@@ -273,7 +291,7 @@ class FocusRightEngine extends ModeEngine {
   }
 }
 
-// Focus Both - Bilateral continuous (no pauses)
+// Focus Both - Bilateral pulsing (30s ON / 30s OFF)
 class FocusBothEngine extends ModeEngine {
   start(baseStrength, totalDuration) {
     super.start(baseStrength, totalDuration);
@@ -284,99 +302,153 @@ class FocusBothEngine extends ModeEngine {
   }
 
   tick(elapsed, totalDuration, baseStrength) {
-    // Continuous bilateral stimulation - no pauses
-    return new ModeTickResult({
-      commands: [], // No commands needed, already active
-      isStimulationActive: true,
-      effectiveStrength: baseStrength,
-      activeChannel: ActiveChannel.BILATERAL,
-      statusText: 'Focus Both · Active'
-    });
-  }
+    const dutyCycle = 30; // 30 seconds on, 30 seconds off
+    const positionInPhase = elapsed % dutyCycle;
+    const isOnPhase = Math.floor(elapsed / dutyCycle) % 2 === 0;
+    const timeUntilNextPhase = dutyCycle - positionInPhase;
 
-  reconnectCommands(elapsed, totalDuration, baseStrength) {
-    return [
-      PulsettoProtocol.Commands.intensity(baseStrength),
-      PulsettoProtocol.Commands.activateBilateral
-    ];
-  }
-}
-
-// Focus Alt - Alternates left/right with pauses between sides
-// Pattern: Left (30s) → Rest (15s) → Right (30s) → Rest (15s) → repeat
-class FocusAltEngine extends ModeEngine {
-  start(baseStrength, totalDuration) {
-    super.start(baseStrength, totalDuration);
-    return [
-      PulsettoProtocol.Commands.intensity(baseStrength),
-      PulsettoProtocol.Commands.activateLeft
-    ];
-  }
-
-  tick(elapsed, totalDuration, baseStrength) {
-    const cycleDuration = 90; // 30s left + 15s rest + 30s right + 15s rest = 90s total
-    const positionInCycle = elapsed % cycleDuration;
-
-    if (positionInCycle < 30) {
-      // Left phase (0-30s)
+    if (isOnPhase) {
       return new ModeTickResult({
         commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
         isStimulationActive: true,
         effectiveStrength: baseStrength,
-        activeChannel: ActiveChannel.LEFT,
-        statusText: 'Focus Alt · Left'
-      });
-    } else if (positionInCycle < 45) {
-      // Rest phase after left (30-45s)
-      return new ModeTickResult({
-        commands: [PulsettoProtocol.Commands.stop],
-        isStimulationActive: false,
-        effectiveStrength: null,
-        activeChannel: ActiveChannel.OFF,
-        statusText: 'Focus Alt · Rest'
-      });
-    } else if (positionInCycle < 75) {
-      // Right phase (45-75s)
-      return new ModeTickResult({
-        commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
-        isStimulationActive: true,
-        effectiveStrength: baseStrength,
-        activeChannel: ActiveChannel.RIGHT,
-        statusText: 'Focus Alt · Right'
+        activeChannel: ActiveChannel.BILATERAL,
+        statusText: 'Focus Both · Active',
+        timeUntilNextPhase
       });
     } else {
-      // Rest phase after right (75-90s)
       return new ModeTickResult({
         commands: [PulsettoProtocol.Commands.stop],
         isStimulationActive: false,
         effectiveStrength: null,
         activeChannel: ActiveChannel.OFF,
-        statusText: 'Focus Alt · Rest'
+        statusText: 'Focus Both · Rest',
+        timeUntilNextPhase
       });
     }
   }
 
   reconnectCommands(elapsed, totalDuration, baseStrength) {
-    const cycleDuration = 90;
+    const dutyCycle = 30;
+    const isOnPhase = Math.floor(elapsed / dutyCycle) % 2 === 0;
+    if (isOnPhase) {
+      return [
+        PulsettoProtocol.Commands.intensity(baseStrength),
+        PulsettoProtocol.Commands.activateBilateral
+      ];
+    }
+    return [PulsettoProtocol.Commands.stop];
+  }
+}
+
+// Focus Alt - Cycles both/left/right with pauses between
+// Pattern: Both (30s) → Pause (15s) → Left (30s) → Pause (15s) → Right (30s) → Pause (15s) → repeat
+class FocusAltEngine extends ModeEngine {
+  start(baseStrength, totalDuration) {
+    super.start(baseStrength, totalDuration);
+    return [
+      PulsettoProtocol.Commands.intensity(baseStrength),
+      PulsettoProtocol.Commands.activateBilateral
+    ];
+  }
+
+  tick(elapsed, totalDuration, baseStrength) {
+    const cycleDuration = 135; // 30s both + 15s pause + 30s left + 15s pause + 30s right + 15s pause = 135s total
     const positionInCycle = elapsed % cycleDuration;
 
     if (positionInCycle < 30) {
+      // Both phase (0-30s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
+        isStimulationActive: true,
+        effectiveStrength: baseStrength,
+        activeChannel: ActiveChannel.BILATERAL,
+        statusText: 'Focus Alt · Both',
+        timeUntilNextPhase: 30 - positionInCycle
+      });
+    } else if (positionInCycle < 45) {
+      // Pause phase after both (30-45s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.stop],
+        isStimulationActive: false,
+        effectiveStrength: null,
+        activeChannel: ActiveChannel.OFF,
+        statusText: 'Focus Alt · Pause',
+        timeUntilNextPhase: 45 - positionInCycle
+      });
+    } else if (positionInCycle < 75) {
+      // Left phase (45-75s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
+        isStimulationActive: true,
+        effectiveStrength: baseStrength,
+        activeChannel: ActiveChannel.LEFT,
+        statusText: 'Focus Alt · Left',
+        timeUntilNextPhase: 75 - positionInCycle
+      });
+    } else if (positionInCycle < 90) {
+      // Pause phase after left (75-90s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.stop],
+        isStimulationActive: false,
+        effectiveStrength: null,
+        activeChannel: ActiveChannel.OFF,
+        statusText: 'Focus Alt · Pause',
+        timeUntilNextPhase: 90 - positionInCycle
+      });
+    } else if (positionInCycle < 120) {
+      // Right phase (90-120s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
+        isStimulationActive: true,
+        effectiveStrength: baseStrength,
+        activeChannel: ActiveChannel.RIGHT,
+        statusText: 'Focus Alt · Right',
+        timeUntilNextPhase: 120 - positionInCycle
+      });
+    } else {
+      // Pause phase after right (120-135s)
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.stop],
+        isStimulationActive: false,
+        effectiveStrength: null,
+        activeChannel: ActiveChannel.OFF,
+        statusText: 'Focus Alt · Pause',
+        timeUntilNextPhase: 135 - positionInCycle
+      });
+    }
+  }
+
+  reconnectCommands(elapsed, totalDuration, baseStrength) {
+    const cycleDuration = 135;
+    const positionInCycle = elapsed % cycleDuration;
+
+    if (positionInCycle < 30) {
+      // Both phase
+      return [
+        PulsettoProtocol.Commands.intensity(baseStrength),
+        PulsettoProtocol.Commands.activateBilateral
+      ];
+    } else if (positionInCycle < 45) {
+      // Pause after both
+      return [PulsettoProtocol.Commands.stop];
+    } else if (positionInCycle < 75) {
       // Left phase
       return [
         PulsettoProtocol.Commands.intensity(baseStrength),
         PulsettoProtocol.Commands.activateLeft
       ];
-    } else if (positionInCycle < 45) {
-      // Rest after left
+    } else if (positionInCycle < 90) {
+      // Pause after left
       return [PulsettoProtocol.Commands.stop];
-    } else if (positionInCycle < 75) {
+    } else if (positionInCycle < 120) {
       // Right phase
       return [
         PulsettoProtocol.Commands.intensity(baseStrength),
         PulsettoProtocol.Commands.activateRight
       ];
     } else {
-      // Rest after right
+      // Pause after right
       return [PulsettoProtocol.Commands.stop];
     }
   }
@@ -398,13 +470,17 @@ class PainReliefEngine extends ModeEngine {
     const t = (elapsed % period) / period;
     const sine = Math.sin(t * 2 * Math.PI);
     const strength = Math.max(1, Math.min(9, Math.round(baseStrength + sine)));
-    
+
+    // Countdown to next wave cycle
+    const timeUntilNextPhase = period - (elapsed % period);
+
     return new ModeTickResult({
       commands: [PulsettoProtocol.Commands.intensity(strength)],
       isStimulationActive: true,
       effectiveStrength: strength,
       activeChannel: ActiveChannel.BILATERAL,
-      statusText: `Pain Relief · ${strength}/9`
+      statusText: `Pain Relief · ${strength}/9`,
+      timeUntilNextPhase
     });
   }
 
@@ -427,15 +503,20 @@ class HeadacheEngine extends ModeEngine {
     const burstOn = 120; // 2 minutes
     const burstOff = 30; // 30 seconds
     const cycle = burstOn + burstOff;
-    const inBurst = (elapsed % cycle) < burstOn;
-    
+    const positionInCycle = elapsed % cycle;
+    const inBurst = positionInCycle < burstOn;
+
+    // Countdown to next burst/pause transition
+    const timeUntilNextPhase = inBurst ? burstOn - positionInCycle : cycle - positionInCycle;
+
     if (inBurst) {
       return new ModeTickResult({
         commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
         isStimulationActive: true,
         effectiveStrength: baseStrength,
         activeChannel: ActiveChannel.BILATERAL,
-        statusText: 'Headache · Burst'
+        statusText: 'Headache · Burst',
+        timeUntilNextPhase
       });
     } else {
       return new ModeTickResult({
@@ -443,7 +524,8 @@ class HeadacheEngine extends ModeEngine {
         isStimulationActive: false,
         effectiveStrength: null,
         activeChannel: ActiveChannel.OFF,
-        statusText: 'Headache · Pause'
+        statusText: 'Headache · Pause',
+        timeUntilNextPhase
       });
     }
   }
@@ -475,12 +557,16 @@ class NauseaEngine extends ModeEngine {
   }
 
   tick(elapsed, totalDuration, baseStrength) {
+    // Countdown to session end
+    const timeUntilNextPhase = totalDuration - elapsed;
+
     return new ModeTickResult({
       commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
       isStimulationActive: true,
       effectiveStrength: baseStrength,
       activeChannel: ActiveChannel.BILATERAL,
-      statusText: 'Nausea · Continuous'
+      statusText: 'Nausea · Continuous',
+      timeUntilNextPhase
     });
   }
 
@@ -514,11 +600,11 @@ class RespiratoryGatedEngine extends ModeEngine {
   tick(elapsed, totalDuration, baseStrength) {
     const elapsedInCycle = elapsed % this.cycleTime;
     const phaseInfo = this._getPhase(elapsedInCycle);
-    
+
     // Stimulation starts after lead time on inhale
-    const isActive = phaseInfo.phase === BreathingPhase.INHALE && 
+    const isActive = phaseInfo.phase === BreathingPhase.INHALE &&
                      elapsedInCycle >= this.leadTime;
-    
+
     const commands = [];
     if (isActive && this.currentPhase !== BreathingPhase.INHALE) {
       commands.push(PulsettoProtocol.Commands.activateBilateral);
@@ -526,9 +612,19 @@ class RespiratoryGatedEngine extends ModeEngine {
     } else if (!isActive && this.currentPhase === BreathingPhase.INHALE) {
       commands.push(PulsettoProtocol.Commands.stop);
     }
-    
+
     this.currentPhase = phaseInfo.phase;
-    
+
+    // Countdown to next breathing phase transition
+    let timeUntilNextPhase;
+    if (phaseInfo.phase === BreathingPhase.INHALE) {
+      timeUntilNextPhase = this.inhaleTime - elapsedInCycle;
+    } else if (phaseInfo.phase === BreathingPhase.HOLD) {
+      timeUntilNextPhase = (this.inhaleTime + this.holdTime) - elapsedInCycle;
+    } else {
+      timeUntilNextPhase = this.cycleTime - elapsedInCycle;
+    }
+
     return new ModeTickResult({
       commands,
       isStimulationActive: isActive,
@@ -536,7 +632,8 @@ class RespiratoryGatedEngine extends ModeEngine {
       activeChannel: isActive ? ActiveChannel.BILATERAL : ActiveChannel.OFF,
       breathingPhase: phaseInfo.phase,
       breathingProgress: phaseInfo.progress,
-      statusText: this._getStatusText(phaseInfo.phase, isActive)
+      statusText: this._getStatusText(phaseInfo.phase, isActive),
+      timeUntilNextPhase
     });
   }
 
@@ -606,7 +703,7 @@ const ModeDescriptions = {
   stress: {
     name: 'Stress Relief',
     summary: 'Continuous bilateral stimulation for general relaxation and stress reduction.',
-    channel: 'Both ears',
+    channel: 'Both sides',
     pattern: 'Continuous',
     timing: 'Full session duration'
   },
@@ -619,64 +716,64 @@ const ModeDescriptions = {
   },
   focus: {
     name: 'Focus (left)',
-    summary: 'Left-ear only stimulation with 30-second on/off cycles. Enhances concentration without overstimulation.',
-    channel: 'Left ear only',
+    summary: 'Left-side only stimulation with 30-second on/off cycles. Enhances concentration without overstimulation.',
+    channel: 'Left side only',
     pattern: '30s ON / 30s OFF duty cycle',
     timing: 'Repeats throughout session'
   },
   focus_r: {
     name: 'Focus (right)',
-    summary: 'Right-ear only stimulation with 30-second on/off cycles. Alternate focus enhancement with right-side bias.',
-    channel: 'Right ear only',
+    summary: 'Right-side only stimulation with 30-second on/off cycles. Alternate focus enhancement with right-side bias.',
+    channel: 'Right side only',
     pattern: '30s ON / 30s OFF duty cycle',
     timing: 'Repeats throughout session'
   },
   focus_both: {
     name: 'Focus (both)',
-    summary: 'Continuous bilateral stimulation without pauses. Maximum focus enhancement with both ears active throughout.',
-    channel: 'Both ears',
-    pattern: 'Continuous bilateral',
-    timing: 'Full session duration'
+    summary: 'Bilateral pulsed stimulation with 30-second on/off cycles. Both sides synchronized for maximum focus enhancement.',
+    channel: 'Both sides',
+    pattern: '30s ON / 30s OFF duty cycle, bilateral',
+    timing: 'Repeats throughout session'
   },
   focus_alt: {
     name: 'Focus (alt)',
-    summary: 'Alternating left/right stimulation with 15-second rest periods between sides. Balanced focus with recovery time.',
-    channel: 'Alternating (Left → Rest → Right → Rest)',
-    pattern: '30s side ON / 15s rest, alternating',
-    timing: '90-second cycle repeats'
+    summary: 'Cycles through both, left, and right with 15-second pauses between. Complete stimulation coverage with recovery periods.',
+    channel: 'Alternating (Both → Pause → Left → Pause → Right → Pause)',
+    pattern: '30s ON / 15s pause, cycling all channels',
+    timing: '2:15 cycle repeats'
   },
   pain: {
     name: 'Pain Relief',
     summary: 'Bilateral stimulation with gentle intensity waves (±1) on a 20-second cycle. Based on clinical protocols.',
-    channel: 'Both ears',
+    channel: 'Both sides',
     pattern: 'Sine wave oscillation ±1',
     timing: '20-second wave period'
   },
   calm: {
     name: 'Calm',
     summary: 'Breathing-guided stimulation. Stimulation activates during late inhale and hold, pauses during exhale. Slow 3.5 breaths/min.',
-    channel: 'Both ears',
+    channel: 'Both sides',
     pattern: 'Respiratory-gated: inhale→ON, exhale→OFF',
     timing: '5s inhale, 5s hold, 7s exhale'
   },
   headache: {
     name: 'Headache',
     summary: 'High-intensity burst cycling: 2 minutes stimulation followed by 30-second rest. Based on gammaCore migraine protocol.',
-    channel: 'Both ears',
+    channel: 'Both sides',
     pattern: 'Burst: 2min ON / 30s OFF',
     timing: '2:30 cycle repeats'
   },
   nausea: {
     name: 'Nausea',
     summary: 'Continuous bilateral stimulation at moderate-high intensity. Based on gammaCore anti-nausea cervical protocol.',
-    channel: 'Both ears',
+    channel: 'Both sides',
     pattern: 'Continuous',
     timing: 'Recommended: 5 minute sessions'
   },
   meditation: {
     name: 'Meditation',
     summary: 'Breathing-guided stimulation with faster cycle. Activates during inhale hold, supporting meditative state.',
-    channel: 'Both ears',
+    channel: 'Both sides',
     pattern: 'Respiratory-gated: inhale→ON, exhale→OFF',
     timing: '5s inhale, 4s hold, 5s exhale'
   }

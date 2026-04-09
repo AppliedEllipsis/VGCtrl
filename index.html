@@ -36,6 +36,7 @@
       <div class="status-bar">
         <span id="connection-status" class="status-dot disconnected"></span>
         <span id="status-text">Disconnected</span>
+        <span id="phase-countdown" class="phase-countdown hidden"></span>
         <span id="battery-level" class="battery hidden">--%</span>
         <span id="charging-indicator" class="charging hidden">⚡</span>
       </div>
@@ -69,10 +70,10 @@
             <select id="mode-select" disabled>
               <option value="sleep" selected>Sleep</option>
               <option value="stress">Stress Relief</option>
+              <option value="focus_alt">Focus (alt)</option>
+              <option value="focus_both">Focus (both)</option>
               <option value="focus">Focus (left)</option>
               <option value="focus_r">Focus (right)</option>
-              <option value="focus_both">Focus (both)</option>
-              <option value="focus_alt">Focus (alt)</option>
               <option value="pain">Pain Relief</option>
               <option value="calm">Calm</option>
               <option value="headache">Headache</option>

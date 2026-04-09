@@ -56,11 +56,18 @@ class CommandQueueManager {
     
     // Send stop immediately
     try {
+      this.bt.emit('commandSending', { command: PulsettoProtocol.Commands.stop, timestamp: Date.now() });
       await this.bt.sendCommandImmediate(PulsettoProtocol.Commands.stop);
       this.lastChannel = null;
       this.lastIntensity = null;
+      this.bt.emit('commandSent', { command: PulsettoProtocol.Commands.stop, timestamp: Date.now() });
+      
+      // Wait 2 seconds after stop, just like other commands
+      await new Promise(r => setTimeout(r, 2000));
+      
       return true;
     } catch (err) {
+      this.bt.emit('commandError', { command: PulsettoProtocol.Commands.stop, error: err.message, timestamp: Date.now() });
       return false;
     }
   }
@@ -124,7 +131,8 @@ class CommandQueueManager {
     // Execute commands with 2 second delays
     for (const cmd of commands) {
       try {
-        await this.bt.sendCommand(cmd);
+        this.bt.emit('commandSending', { command: cmd, timestamp: Date.now() });
+        await this.bt._sendCommandDirect(cmd);
         
         // Track what we sent
         if (this._isChannelCmd(cmd)) {
@@ -133,12 +141,15 @@ class CommandQueueManager {
           this.lastIntensity = cmd;
         }
         
+        this.bt.emit('commandSent', { command: cmd, timestamp: Date.now() });
+        
         // Delay before next command (unless stop or it's the last one)
         if (cmd !== PulsettoProtocol.Commands.stop && cmd !== commands[commands.length - 1]) {
           await new Promise(r => setTimeout(r, 2000));
         }
       } catch (err) {
         // Log but continue - next tick will retry if needed
+        this.bt.emit('commandError', { command: cmd, error: err.message, timestamp: Date.now() });
         console.warn('Command failed:', err.message);
       }
     }
@@ -173,14 +184,17 @@ class CommandQueueManager {
     
     for (const cmd of commands) {
       try {
-        await this.bt.sendCommand(cmd);
+        this.bt.emit('commandSending', { command: cmd, timestamp: Date.now() });
+        await this.bt._sendCommandDirect(cmd);
         if (this._isChannelCmd(cmd)) this.lastChannel = cmd;
         if (this._isIntensityCmd(cmd)) this.lastIntensity = cmd;
+        this.bt.emit('commandSent', { command: cmd, timestamp: Date.now() });
         
         if (cmd !== commands[commands.length - 1]) {
           await new Promise(r => setTimeout(r, 2000));
         }
       } catch (err) {
+        this.bt.emit('commandError', { command: cmd, error: err.message, timestamp: Date.now() });
         console.warn('Immediate command failed:', err.message);
       }
     }

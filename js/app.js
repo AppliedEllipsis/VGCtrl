@@ -124,18 +124,20 @@ class PulsettoApp {
       }
       
       if (commands.length > 0) {
-        try {
-          // Send commands with 2 second delays between them
-          for (const cmd of commands) {
-            await this.ble.sendCommand(cmd);
-            await new Promise(r => setTimeout(r, 2000));
+        // Queue seek commands (will coalesce with pending user changes)
+        for (const cmd of commands) {
+          if (cmd === PulsettoProtocol.Commands.activateLeft ||
+              cmd === PulsettoProtocol.Commands.activateRight ||
+              cmd === PulsettoProtocol.Commands.activateBilateral ||
+              cmd === PulsettoProtocol.Commands.stop) {
+            this.ble.queueChannel(cmd);
+          } else if (/^[1-9]\n$/.test(cmd)) {
+            this.ble.queueIntensity(cmd);
           }
-          
-          this.isStimulationActive = !commands.includes(PulsettoProtocol.Commands.stop);
-          this.log(`Seek: ${this._formatTime(clamped)}`, 'info');
-        } catch (err) {
-          this.log(`Seek failed: ${err.message}`, 'warning');
         }
+        
+        this.isStimulationActive = !commands.includes(PulsettoProtocol.Commands.stop);
+        this.log(`Seek: ${this._formatTime(clamped)}`, 'info');
       }
     }
     
@@ -312,8 +314,23 @@ class PulsettoApp {
       this._handleNotification(parsed);
     });
     
+    this.ble.on('commandSending', ({ command }) => {
+      // This fires when a command is about to be sent (after debounce)
+      const clean = command.replace('\n', '');
+      const label = /^[1-9]$/.test(clean) ? `intensity ${clean}` : 
+                    clean === 'A' ? 'left' :
+                    clean === 'C' ? 'right' :
+                    clean === 'D' ? 'bilateral' :
+                    clean === '-' ? 'stop' : clean;
+      this.log(`Sending ${label}...`, 'info');
+    });
+    
     this.ble.on('commandSent', ({ command, bytes }) => {
       this.log(`→ ${command.replace('\n', '')}`, 'command', bytes);
+    });
+    
+    this.ble.on('commandError', ({ command, error }) => {
+      this.log(`✗ ${command.replace('\n', '')}: ${error}`, 'error');
     });
 
     this.ble.on('error', ({ error }) => {
@@ -564,13 +581,10 @@ class PulsettoApp {
 
     this.log(`Commands to send: ${JSON.stringify(initialCommands)}`, 'info');
 
-    // Send activation commands with 2 second delays
+    // Send activation commands (uses manager's sendImmediate for blocking send)
     if (initialCommands.length > 0) {
       try {
-        for (const cmd of initialCommands) {
-          await this.ble.sendCommand(cmd);
-          await new Promise(r => setTimeout(r, 2000));
-        }
+        await this.ble.sendCommands(initialCommands);
         this.log('Device commands sent successfully', 'success');
       } catch (err) {
         this.log(`Failed to send commands: ${err.message}`, 'error');
@@ -744,15 +758,9 @@ class PulsettoApp {
         }
         
         if (channelCmd) {
-          (async () => {
-            try {
-              await this.ble.sendCommand(channelCmd);
-              await new Promise(r => setTimeout(r, 2000));
-              await this.ble.sendCommand(PulsettoProtocol.Commands.keepalive(strength));
-            } catch (err) {
-              // Keepalive errors are silent
-            }
-          })();
+          // Queue keepalive commands (low priority, will coalesce with user changes)
+          this.ble.queueChannel(channelCmd);
+          this.ble.queueIntensity(PulsettoProtocol.Commands.keepalive(strength));
         }
       }
     }, interval);

@@ -121,9 +121,6 @@ class TimelineStateManager {
   seek(elapsedSeconds) {
     if (!this.isRunning || !this.modeEngine) return;
 
-    // Reset last sent state so _sendCorrection will definitely send
-    this.lastSentState = { channel: null, intensity: null };
-
     // Update expected state at new position
     const oldState = { ...this.expectedState };
     this._updateExpectedStateFromEngine(elapsedSeconds);
@@ -138,14 +135,16 @@ class TimelineStateManager {
       });
     }
 
-    // Send commands immediately (no deferral for seek)
-    this._sendCorrection();
+    // Note: Seek updates expected state but does NOT send commands immediately.
+    // The periodic keepalive tick will sync the device state when it fires.
+    // Reset lastSentState so the next periodic tick will send if state differs.
+    this.lastSentState = { channel: null, intensity: null };
 
     // Reset tick scheduling from now
     this.lastCommandTime = Date.now();
     this._scheduleNextTick();
 
-    console.log('[TimelineStateManager] Seek to', elapsedSeconds, this.expectedState);
+    console.log('[TimelineStateManager] Seek to', elapsedSeconds, this.expectedState, '(state only, commands deferred to periodic tick)');
   }
 
   /**
@@ -263,38 +262,20 @@ class TimelineStateManager {
       });
     }
 
-    // Find next transition time from mode engine
-    const nextTransition = this._findNextTransition(elapsed);
-
-    // Decide whether to defer this tick
-    let shouldDefer = false;
-    let deferralMs = 0;
-
-    if (!isInitial && nextTransition) {
-      const timeToTransition = nextTransition.time - elapsed;
-      if (timeToTransition > 0 && timeToTransition <= this.transitionWindowMs / 1000) {
-        // Transition is within 3 seconds - defer to batch with it
-        shouldDefer = true;
-        deferralMs = (timeToTransition * 1000) + 100; // +100ms buffer
-        this.pendingTransition = nextTransition;
-        console.log('[TimelineStateManager] Deferring tick', deferralMs, 'ms for transition at', nextTransition.time);
-      }
-    }
-
-    if (shouldDefer) {
-      // Schedule tick at transition time
-      this.tickTimer = setTimeout(() => {
-        this.pendingTransition = null;
-        this._executeTick(true); // Execute as initial (no further deferral)
-      }, deferralMs);
-    } else {
-      // Execute now
+    // Execute tick - but only send commands if this is a periodic keepalive, not a phase transition
+    // Phase transitions (stateChanged && !isInitial) update expected state but don't send commands;
+    // the periodic keepalive (every 5s) will sync the device state when it fires.
+    // User-initiated changes (setChannelOverride, setIntensity) still send immediately.
+    const isPhaseTransition = stateChanged && !isInitial;
+    if (!isPhaseTransition) {
       this._sendCorrection();
       this.lastCommandTime = Date.now();
-
-      // Schedule next tick
-      this._scheduleNextTick();
+    } else {
+      console.log('[TimelineStateManager] Phase transition - state updated, commands deferred to periodic tick');
     }
+
+    // Schedule next tick
+    this._scheduleNextTick();
   }
 
   /**

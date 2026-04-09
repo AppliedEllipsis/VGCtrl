@@ -34,6 +34,9 @@ class PulsettoApp {
     // Track if user manually set intensity (preserved across mode changes until connect)
     this._userSetIntensity = false;
 
+    // Audio feedback settings (toggle UI coming in T04)
+    this.audioEnabled = true;
+
     // Logging state
     this.autoScroll = true;
     this.logsExpanded = true;
@@ -401,6 +404,9 @@ class PulsettoApp {
       
       // Deactivate device
       this._sendStopCommand();
+      
+      // Play completion sound after stop commands
+      this.playCompletionSound();
       
       this._updateActionButtons();
       this._resetSessionUI();
@@ -964,6 +970,46 @@ class PulsettoApp {
     }
   }
 
+  // Audio feedback methods using Web Audio API
+  _playTone(frequency, duration, type = 'sine') {
+    if (!this.audioEnabled) return;
+    const ctx = this.bgKeepalive?.audioContext;
+    if (!ctx || ctx.state === 'suspended') return;
+
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = type;
+      osc.frequency.value = frequency;
+      gain.gain.value = 0.1; // Low volume for subtle feedback
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + duration / 1000);
+
+      // Fade out to avoid click at end
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
+    } catch (e) {
+      console.warn('[Audio] Tone playback failed:', e);
+    }
+  }
+
+  playPhaseSound() {
+    // Short 200Hz beep (100ms) for phase changes
+    this._playTone(200, 100, 'sine');
+    console.log('[Audio] Phase change sound');
+  }
+
+  playCompletionSound() {
+    // Two-tone ascending chime (440Hz then 880Hz)
+    this._playTone(440, 150, 'sine');
+    setTimeout(() => this._playTone(880, 300, 'sine'), 160);
+    console.log('[Audio] Completion chime');
+  }
+
   // Mode engine tick processing - updates UI state only
   // Command sending is now handled by TimelineStateManager's scheduled ticks
   _processModeTick(elapsed) {
@@ -1045,6 +1091,7 @@ class PulsettoApp {
     } else if (!step.isFadeUpdate) {
       // Natural phase transition (not fade intensity update)
       this.log(`  [Phase] Natural transition to: ${step.label}, intensity=${step.intensity}, channel=${step.channel}`, 'info');
+      this.playPhaseSound();
       if (shouldSendIntensity) this.setIntensity(step.intensity);
       if (shouldSendChannel) this.setChannelOverride(step.channel);
     } else if (step.isFadeUpdate && step.intensity !== undefined) {

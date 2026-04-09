@@ -219,6 +219,41 @@ class SessionClock {
     return true;
   }
 
+  seek(elapsedSeconds) {
+    if (this.state === SessionClockState.IDLE || this.state === SessionClockState.COMPLETED) {
+      return false;
+    }
+
+    // Clamp to valid range
+    const targetElapsed = Math.max(0, Math.min(this.totalDuration, elapsedSeconds));
+    const newRemaining = Math.max(0, this.totalDuration - targetElapsed);
+    
+    // Adjust session start time to make it appear as if we've been running for targetElapsed
+    // newStartTime = now - targetElapsed - accumulatedPauseTime
+    const now = Date.now();
+    this.sessionStartTime = now - (targetElapsed * 1000) - this.accumulatedPauseTime;
+    
+    // Update elapsed/remaining to match
+    this.elapsedSeconds = targetElapsed;
+    this.remainingSeconds = newRemaining;
+
+    this.emit('seeked', {
+      elapsed: this.elapsedSeconds,
+      remaining: this.remainingSeconds,
+      timestamp: now
+    });
+
+    // Immediately emit a tick with new values
+    this.emit('tick', {
+      remaining: this.remainingSeconds,
+      elapsed: this.elapsedSeconds,
+      progress: this.progress,
+      state: this.state
+    });
+
+    return true;
+  }
+
   _onTick() {
     this._recalculateFromWallClock();
 

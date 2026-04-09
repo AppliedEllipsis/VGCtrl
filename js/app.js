@@ -115,48 +115,20 @@ class PulsettoApp {
   }
 
   async _executeSeek(clamped, doneCallback = null) {
-    const wasRunning = this.clock.isRunning;
-
-    if (wasRunning) {
-      // Pause briefly while seeking
-      this.clock.pause();
-    }
-
-    // Adjust the session start time to reflect the new elapsed
-    const now = Date.now();
-    const newElapsedMs = clamped * 1000;
-    
-    // Recalculate session start time
-    this.clock.sessionStartTime = now - newElapsedMs - this.clock.accumulatedPauseTime;
-    this.clock.elapsedSeconds = clamped;
-    this.clock.remainingSeconds = this.clock.totalDuration - clamped;
+    // Use the clock's built-in seek method (updates elapsed/remaining and emits tick)
+    this.clock.seek(clamped);
 
     // Notify timeline of seek - it will update to current script step and notify via onScriptStep
     if (this.timeline) {
       this.timeline.seek(clamped);
       this.log(`Seek: ${this._formatTime(clamped)}`, 'info');
     }
-    
-    // Update timeline visual
-    this.timeline.updateProgress(clamped, wasRunning);
-    
+
     // Signal seek complete to timeline
     if (doneCallback) {
       doneCallback();
     }
     this.timeline.seekComplete();
-    
-    // Resume if was running
-    if (wasRunning) {
-      this.clock.resume();
-    }
-    
-    // Update UI
-    this._onTick({
-      remaining: this.clock.remainingSeconds,
-      elapsed: clamped,
-      progress: clamped / this.clock.totalDuration
-    });
   }
 
   _formatTime(seconds) {
@@ -223,10 +195,6 @@ class PulsettoApp {
     this.ui.timelinePanel = document.getElementById('timeline-panel');
     this.ui.timelineRoot = document.getElementById('timeline-root');
 
-    // Footer
-    this.ui.wakeLockStatus = document.getElementById('wake-lock-status');
-    this.ui.visibilityStatus = document.getElementById('visibility-status');
-    
     // Logs
     this.ui.logContainer = document.getElementById('log-container');
     this.ui.btnClearLogs = document.getElementById('btn-clear-logs');
@@ -366,9 +334,6 @@ class PulsettoApp {
     });
     
     this.ble.on('visibilityChange', ({ hidden }) => {
-      this.ui.visibilityStatus.textContent = hidden ? 'Background' : 'Visible';
-      this.ui.visibilityStatus.classList.toggle('hidden-state', hidden);
-
       // Reset throttle warning when tab becomes visible
       if (!hidden) {
         this._throttleWarned = false;
@@ -449,13 +414,6 @@ class PulsettoApp {
       }
     });
     
-    this.clock.on('wakeLockAcquired', () => {
-      this.ui.wakeLockStatus.classList.remove('hidden');
-    });
-    
-    this.clock.on('wakeLockReleased', () => {
-      this.ui.wakeLockStatus.classList.add('hidden');
-    });
   }
 
   // Actions

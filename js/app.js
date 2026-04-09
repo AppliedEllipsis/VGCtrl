@@ -112,12 +112,17 @@ class PulsettoApp {
 
   async _executeSeek(clamped, doneCallback = null) {
     const wasRunning = this.clock.isRunning;
-    
+
+    // Notify timeline state manager of seek (updates expected state)
+    if (this.timeline) {
+      this.timeline.seek(clamped);
+    }
+
     if (wasRunning) {
       // Pause briefly while seeking
       this.clock.pause();
     }
-    
+
     // Adjust the session start time to reflect the new elapsed
     const now = Date.now();
     const newElapsedMs = clamped * 1000;
@@ -536,16 +541,22 @@ class PulsettoApp {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === channel);
     });
 
-    // If session is active (running or paused), send channel command with 2s delay then intensity
+    // Notify timeline state manager of external channel change
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
+    if (sessionActive && this.timeline) {
+      this.timeline.notifyExternalChange('channel', channel === 'auto' ? 'auto' : channel);
+    }
+
+    // If session is active (running or paused), send channel command with 2s delay then intensity
     if (sessionActive && this.ble.canSendCommands) {
       // Determine target activation command
       let targetCmd;
+      let effectiveChannel = channel;
       switch (channel) {
         case 'left': targetCmd = PulsettoProtocol.Commands.activateLeft; break;
         case 'right': targetCmd = PulsettoProtocol.Commands.activateRight; break;
         case 'bilateral': targetCmd = PulsettoProtocol.Commands.activateBilateral; break;
-        default: 
+        default:
           // For 'auto', use the mode engine's current channel preference
           if (this.modeEngine) {
             const result = this.modeEngine.tick(
@@ -559,9 +570,10 @@ class PulsettoApp {
               case 'bilateral': targetCmd = PulsettoProtocol.Commands.activateBilateral; break;
               default: targetCmd = PulsettoProtocol.Commands.stop;
             }
+            effectiveChannel = result.activeChannel;
           }
       }
-      
+
       if (targetCmd) {
         // Queue channel command (debounced, will coalesce with intensity)
         this.ble.queueChannel(targetCmd);
@@ -569,6 +581,11 @@ class PulsettoApp {
         this.ble.queueIntensity(PulsettoProtocol.Commands.intensity(this.baseStrength));
         this.isStimulationActive = targetCmd !== PulsettoProtocol.Commands.stop;
         this.log(`Channel: ${channel}`, 'info');
+
+        // Update timeline with effective channel (not 'auto')
+        if (this.timeline && effectiveChannel && effectiveChannel !== 'auto') {
+          this.timeline.notifyExternalChange('channel', effectiveChannel);
+        }
       }
     } else {
       this.log(`Channel: ${channel} (${sessionActive ? 'will apply on resume' : 'ready'})`, 'info');
@@ -634,7 +651,12 @@ class PulsettoApp {
     const signal = this._fadeAbortController.signal;
     
     this.log(`Fade ${mode} starting...`, 'info');
-    
+
+    // Notify timeline state manager that fade is starting
+    if (this.timeline) {
+      this.timeline.notifyExternalChange('fade', { mode: mode });
+    }
+
     // Determine current channel
     let currentChannel = PulsettoProtocol.Commands.activateBilateral;
     if (this.channelOverride !== 'auto') {
@@ -786,7 +808,16 @@ class PulsettoApp {
     this.ui.intensityValue.textContent = finalIntensity;
     
     this.log(`Fade ${mode} complete - intensity stays at ${finalIntensity}`, 'success');
-    
+
+    // Notify timeline state manager that fade completed
+    if (this.timeline) {
+      this.timeline.notifyExternalChange('fadeComplete', {
+        mode: mode,
+        finalIntensity: finalIntensity,
+        finalChannel: finalIntensity > 0 ? (this.channelOverride !== 'auto' ? this.channelOverride : 'bilateral') : 'off'
+      });
+    }
+
     // Auto-reset to off after completion
     this._fadeState = 'off';
     this._fadeAbortController = null;
@@ -810,16 +841,16 @@ class PulsettoApp {
       this.baseStrength = value;
       return;
     }
-    
+
     this.baseStrength = value;
     this.ui.intensityValue.textContent = value;
-    
+
     // Cancel any active fade when user manually sets intensity
     if (this._fadeState !== 'off' || this._fadeExecuting) {
       this.log(`Manual intensity ${value} - cancelling fade`, 'warning');
       this._cancelFade();
     }
-    
+
     // Queue intensity command (debounced, coalesces with pending channel)
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
     if (this.ble.canSendCommands && sessionActive) {
@@ -827,6 +858,11 @@ class PulsettoApp {
       // Update stimulation state based on intensity
       this.isStimulationActive = value > 0;
       // Don't log here - the manager will process it
+    }
+
+    // Notify timeline state manager of external intensity change
+    if (sessionActive && this.timeline) {
+      this.timeline.notifyExternalChange('intensity', value);
     }
   }
 
@@ -841,7 +877,7 @@ class PulsettoApp {
     // Initialize mode engine
     this.modeEngine = ModeEngineFactory.create(this.selectedMode);
     const duration = this.timerMinutes * 60;
-    
+
     // Initialize timeline
     if (this.timeline) {
       this.ui.timelinePanel.classList.remove('hidden');
@@ -849,9 +885,11 @@ class PulsettoApp {
       requestAnimationFrame(() => {
         this.timeline.setMode(this.selectedMode, duration, this.baseStrength);
         this.timeline.updateProgress(0, true);
+        // Start timeline state tracking with heartbeat
+        this.timeline.startTracking(this.ble, this.clock);
       });
     }
-    
+
     // Get initial commands
     let initialCommands = this.modeEngine.start(this.baseStrength, duration);
 
@@ -872,27 +910,39 @@ class PulsettoApp {
         return;
       }
     }
-    
+
     this.isStimulationActive = true;
     this.effectiveStrength = this.baseStrength;
-    
+
     // Start clock
     this.clock.start(duration);
-    
+
     // Show progress
     this.ui.sessionProgress.classList.remove('hidden');
     this._updateBreathingUI();
   }
 
   pauseSession() {
+    // Pause timeline tracking
+    if (this.timeline) {
+      this.timeline.pauseTracking();
+    }
     this.clock.pause();
   }
 
   resumeSession() {
+    // Resume timeline tracking
+    if (this.timeline) {
+      this.timeline.resumeTracking();
+    }
     this.clock.resume();
   }
 
   stopSession() {
+    // Stop timeline tracking
+    if (this.timeline) {
+      this.timeline.stopTracking();
+    }
     this.clock.stop();
   }
 
@@ -1241,18 +1291,23 @@ class PulsettoApp {
     this.ui.progressFill.style.width = '0%';
     this.ui.timerValue.textContent = SessionClock.formatTime(this.timerMinutes * 60);
     this.ui.breathingCircle.classList.remove('inhale', 'hold', 'exhale');
-    
+
+    // Stop timeline tracking
+    if (this.timeline) {
+      this.timeline.stopTracking();
+    }
+
     // Hide timeline
     if (this.ui.timelinePanel) {
       this.ui.timelinePanel.classList.add('hidden');
     }
-    
+
     this.modeEngine = null;
     this.isStimulationActive = false;
     this.effectiveStrength = null;
     this.activeChannel = ActiveChannel.OFF;
     this.breathingPhase = null;
-    
+
     // Cancel any active fade
     this._cancelFade();
   }

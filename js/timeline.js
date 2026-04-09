@@ -17,6 +17,7 @@ class SessionTimeline {
       segmentHeight: options.segmentHeight || 32,
       scrubEnabled: options.scrubEnabled !== false,
       showLabels: options.showLabels !== false,
+      heartbeatIntervalMs: options.heartbeatIntervalMs || 5000,
       ...options
     };
 
@@ -32,6 +33,9 @@ class SessionTimeline {
     this.scrubbing = false;
     this.seeking = false;  // Track when a seek operation is in progress
     this.onScrubCallback = null;
+
+    // State manager for tracking expected device state
+    this.stateManager = null;
 
     this._init();
   }
@@ -250,15 +254,85 @@ class SessionTimeline {
     this.state.totalDuration = totalDuration;
     this.state.baseStrength = baseStrength;
     this.state.elapsed = 0;
-    
+
     this.modeEngine = ModeEngineFactory.create(mode);
-    
+
     // Show/hide breathing legend
     const isBreathing = ['calm', 'meditation'].includes(mode);
     this.container.querySelector('.legend-item.breathing').classList.toggle('hidden', !isBreathing);
-    
+
     this.render();
     this._updatePositionDisplay();
+  }
+
+  /**
+   * Start timeline tracking with state manager
+   */
+  startTracking(ble, clock) {
+    // Initialize state manager
+    this.stateManager = new TimelineStateManager({
+      ble: ble,
+      clock: clock,
+      heartbeatIntervalMs: this.options.heartbeatIntervalMs,
+      onStateChange: (change) => this._onStateChange(change),
+      onHeartbeat: (data) => this._onHeartbeat(data)
+    });
+
+    this.stateManager.start(this.state.mode, this.state.totalDuration, this.state.baseStrength);
+  }
+
+  /**
+   * Stop timeline tracking
+   */
+  stopTracking() {
+    if (this.stateManager) {
+      this.stateManager.stop();
+      this.stateManager = null;
+    }
+  }
+
+  /**
+   * Pause tracking (session paused)
+   */
+  pauseTracking() {
+    if (this.stateManager) {
+      this.stateManager.pause();
+    }
+  }
+
+  /**
+   * Resume tracking
+   */
+  resumeTracking() {
+    if (this.stateManager) {
+      this.stateManager.resume();
+    }
+  }
+
+  /**
+   * Notify state manager of external changes (manual controls)
+   */
+  notifyExternalChange(type, value) {
+    if (this.stateManager) {
+      this.stateManager.notifyExternalChange(type, value);
+    }
+  }
+
+  /**
+   * Get current expected state from state manager
+   */
+  getExpectedState() {
+    return this.stateManager ? this.stateManager.getExpectedState() : null;
+  }
+
+  _onStateChange(change) {
+    // Visual feedback for state changes could go here
+    console.log('[Timeline] State change:', change);
+  }
+
+  _onHeartbeat(data) {
+    // Visual feedback for heartbeat could go here
+    // console.log('[Timeline] Heartbeat:', data);
   }
 
   updateProgress(elapsed, isPlaying = true) {

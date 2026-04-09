@@ -194,7 +194,7 @@ class FocusEngine extends ModeEngine {
   tick(elapsed, totalDuration, baseStrength) {
     const dutyCycle = 30; // 30 seconds on, 30 seconds off
     const isOnPhase = Math.floor(elapsed / dutyCycle) % 2 === 0;
-    
+
     if (isOnPhase) {
       return new ModeTickResult({
         commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
@@ -220,6 +220,52 @@ class FocusEngine extends ModeEngine {
     if (isOnPhase) {
       return [
         PulsettoProtocol.Commands.activateLeft,
+        PulsettoProtocol.Commands.intensity(baseStrength)
+      ];
+    }
+    return [PulsettoProtocol.Commands.stop];
+  }
+}
+
+// Focus Right - 30s on/off duty cycling, right channel only
+class FocusRightEngine extends ModeEngine {
+  start(baseStrength, totalDuration) {
+    super.start(baseStrength, totalDuration);
+    return [
+      PulsettoProtocol.Commands.activateRight,
+      PulsettoProtocol.Commands.intensity(baseStrength)
+    ];
+  }
+
+  tick(elapsed, totalDuration, baseStrength) {
+    const dutyCycle = 30; // 30 seconds on, 30 seconds off
+    const isOnPhase = Math.floor(elapsed / dutyCycle) % 2 === 0;
+
+    if (isOnPhase) {
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.intensity(baseStrength)],
+        isStimulationActive: true,
+        effectiveStrength: baseStrength,
+        activeChannel: ActiveChannel.RIGHT,
+        statusText: 'Focus R · Active'
+      });
+    } else {
+      return new ModeTickResult({
+        commands: [PulsettoProtocol.Commands.stop],
+        isStimulationActive: false,
+        effectiveStrength: null,
+        activeChannel: ActiveChannel.OFF,
+        statusText: 'Focus R · Rest'
+      });
+    }
+  }
+
+  reconnectCommands(elapsed, totalDuration, baseStrength) {
+    const dutyCycle = 30;
+    const isOnPhase = Math.floor(elapsed / dutyCycle) % 2 === 0;
+    if (isOnPhase) {
+      return [
+        PulsettoProtocol.Commands.activateRight,
         PulsettoProtocol.Commands.intensity(baseStrength)
       ];
     }
@@ -469,6 +515,13 @@ const ModeDescriptions = {
     pattern: '30s ON / 30s OFF duty cycle',
     timing: 'Repeats throughout session'
   },
+  focus_r: {
+    name: 'Focus R',
+    summary: 'Right-ear only stimulation with 30-second on/off cycles. Alternate focus enhancement with right-side bias.',
+    channel: 'Right ear only',
+    pattern: '30s ON / 30s OFF duty cycle',
+    timing: 'Repeats throughout session'
+  },
   pain: {
     name: 'Pain Relief',
     summary: 'Bilateral stimulation with gentle intensity waves (±1) on a 20-second cycle. Based on clinical protocols.',
@@ -535,6 +588,7 @@ const ModeEngineFactory = {
       case 'stress': return new StressReliefEngine();
       case 'sleep': return new SleepEngine();
       case 'focus': return new FocusEngine();
+      case 'focus_r': return new FocusRightEngine();
       case 'pain': return new PainReliefEngine();
       case 'calm': return new CalmEngine();
       case 'headache': return new HeadacheEngine();
@@ -555,6 +609,7 @@ if (typeof window !== 'undefined') {
   window.StressReliefEngine = StressReliefEngine;
   window.SleepEngine = SleepEngine;
   window.FocusEngine = FocusEngine;
+  window.FocusRightEngine = FocusRightEngine;
   window.PainReliefEngine = PainReliefEngine;
   window.CalmEngine = CalmEngine;
   window.HeadacheEngine = HeadacheEngine;

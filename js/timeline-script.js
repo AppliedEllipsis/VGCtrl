@@ -25,6 +25,8 @@ class TimelineScript {
         return this._generateSleepScript();
       case 'focus':
         return this._generateFocusScript();
+      case 'focus_r':
+        return this._generateFocusRightScript();
       case 'calm':
         return this._generateCalmScript();
       case 'meditation':
@@ -94,6 +96,45 @@ class TimelineScript {
           start: cycleStart,
           end: onEnd,
           channel: 'left',
+          intensity: this.baseStrength,
+          label: 'ON',
+          type: 'active'
+        });
+      }
+
+      if (cycleEnd > onEnd) {
+        instructions.push({
+          start: onEnd,
+          end: cycleEnd,
+          channel: 'off',
+          intensity: 0,
+          label: 'REST',
+          type: 'rest'
+        });
+      }
+    }
+
+    return instructions;
+  }
+
+  /**
+   * Focus R mode: 30s ON right / 30s OFF cycles
+   */
+  _generateFocusRightScript() {
+    const cycleDuration = 60; // 30s on, 30s off
+    const numCycles = Math.ceil(this.totalDuration / cycleDuration);
+    const instructions = [];
+
+    for (let i = 0; i < numCycles; i++) {
+      const cycleStart = i * cycleDuration;
+      const onEnd = Math.min(cycleStart + 30, this.totalDuration);
+      const cycleEnd = Math.min(cycleStart + cycleDuration, this.totalDuration);
+
+      if (onEnd > cycleStart) {
+        instructions.push({
+          start: cycleStart,
+          end: onEnd,
+          channel: 'right',
           intensity: this.baseStrength,
           label: 'ON',
           type: 'active'

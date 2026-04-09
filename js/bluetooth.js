@@ -53,10 +53,13 @@ class CommandQueueManager {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
-    
+
+    // Wait for any in-progress GATT operations (status polls, etc.)
+    await new Promise(r => setTimeout(r, 300));
+
     // Send stop with retry logic
     let retryCount = 0;
-    const maxRetries = 3;
+    const maxRetries = 5; // Increased from 3
     const stopCmd = PulsettoProtocol.Commands.stop;
     
     while (retryCount < maxRetries) {

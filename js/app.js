@@ -292,6 +292,10 @@ class PulsettoApp {
       this._startStatusPoll();
       
       this._enableSessionControls(true);
+      
+      // Auto-start session with current mode settings
+      this.log('Auto-starting session...', 'info');
+      this.startSession();
     });
     
     this.ble.on('disconnected', ({ unexpected }) => {
@@ -1014,23 +1018,38 @@ class PulsettoApp {
       if (activeBtn) activeBtn.classList.add('active');
     }
 
-    // Only send commands on manual seek (not natural playback)
+    // Send commands on: manual seek, natural phase transition, or fade intensity change
     if (step.isSeek) {
-      this.log(`  Seek applying: intensity=${step.intensity}, channel=${step.channel}`, 'info');
+      // Manual seek - user dragged/scrubbed to new position
+      this.log(`  [SEEK] Step: label="${step.label}", channel=${step.channel}, intensity=${step.intensity}`, 'info');
       if (step.intensity !== undefined && step.type !== 'rest') {
         this.setIntensity(step.intensity);
       }
       if (step.channel && step.channel !== 'off') {
         this.setChannelOverride(step.channel);
       }
+    } else if (!step.isFadeUpdate) {
+      // Natural phase transition (not fade intensity update) - send channel/intensity commands
+      this.log(`  [Phase] Natural transition to: ${step.label}, channel=${step.channel}, intensity=${step.intensity}`, 'info');
+      if (step.intensity !== undefined && step.type !== 'rest') {
+        this.setIntensity(step.intensity);
+      }
+      if (step.channel && step.channel !== 'off') {
+        this.setChannelOverride(step.channel);
+      }
+    } else if (step.isFadeUpdate && step.intensity !== undefined) {
+      // During fade-down, send intensity commands as they change
+      this.log(`  [Fade] Intensity: ${step.intensity}`, 'info');
+      this.setIntensity(step.intensity);
     }
 
     // Log the script step
     const seekPrefix = step.isSeek ? '[Seek] ' : '';
+    const fadePrefix = step.isFadeUpdate ? '[Fade] ' : '';
     const chLabel = step.channel === 'left' ? 'Left' :
                    step.channel === 'right' ? 'Right' :
                    step.channel === 'bilateral' ? 'Both' : 'Auto';
-    this.log(`${seekPrefix}Script: ${step.label} (${chLabel}, ${step.intensity})`, 'info');
+    this.log(`${seekPrefix}${fadePrefix}Script: ${step.label} (${chLabel}, ${step.intensity})`, 'info');
   }
 
   _resumeSessionOnDevice() {

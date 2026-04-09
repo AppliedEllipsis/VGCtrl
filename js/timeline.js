@@ -234,6 +234,7 @@ class SessionTimeline {
 
     this.script = new TimelineScript(mode, totalDuration, baseStrength);
     this.currentInstruction = null;
+    this._lastReportedIntensity = null;
 
     this.render();
     this._updatePositionDisplay();
@@ -265,19 +266,29 @@ class SessionTimeline {
     if (!this.script || this.state.totalDuration === 0) return;
 
     const instruction = this.script.getInstructionAt(this.state.elapsed);
+    const currentIntensity = this.script.getIntensityAt(this.state.elapsed);
 
-    if (instruction && instruction !== this.currentInstruction) {
+    // Check if we stepped to a new instruction
+    const instructionChanged = instruction && instruction !== this.currentInstruction;
+
+    // Check if intensity changed during a fade (same instruction, different intensity)
+    const intensityChanged = instruction?.type === 'fade' &&
+                           currentIntensity !== this._lastReportedIntensity;
+
+    if (instructionChanged || intensityChanged) {
       this.currentInstruction = instruction;
+      this._lastReportedIntensity = currentIntensity;
 
       if (this.onScriptStepCallback) {
         const step = {
           channel: instruction.channel,
-          intensity: this.script.getIntensityAt(this.state.elapsed),
+          intensity: currentIntensity,
           label: instruction.label,
           type: instruction.type,
           start: instruction.start,
           end: instruction.end,
-          isSeek: false
+          isSeek: false,
+          isFadeUpdate: intensityChanged && !instructionChanged
         };
         this.onScriptStepCallback(step);
       }

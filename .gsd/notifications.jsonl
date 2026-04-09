@@ -1,1 +1,3 @@
 {"id":"90b93954-f0cc-433e-86a5-d614b6855094","ts":"2026-04-09T05:41:54.137Z","severity":"warning","message":"[state] DB unavailable — using filesystem state derivation (degraded mode)","source":"workflow-logger","read":true}
+{"id":"3ca07de4-5eae-4194-aaff-f04bc445d669","ts":"2026-04-09T15:44:40.248Z","severity":"info","message":"Entered worktree for M001 at D:\\_projects\\pulsetto\\web-app\\.gsd\\worktrees\\M001","source":"notify","read":false}
+{"id":"d92a2471-6759-42ea-a933-cce48af5fb88","ts":"2026-04-09T15:44:40.250Z","severity":"info","message":"Auto-mode started. Will loop until milestone complete.","source":"notify","read":false}

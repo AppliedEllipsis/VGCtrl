@@ -815,7 +815,7 @@ class PulsettoApp {
         this.timeline.setMode(this.selectedMode, duration, this.baseStrength);
         this.timeline.updateProgress(0, true);
         // Start timeline state tracking with heartbeat
-        this.timeline.startTracking(this.ble, this.clock);
+        this.timeline.startTracking(this.ble, this.clock, this.channelOverride);
       });
     }
 

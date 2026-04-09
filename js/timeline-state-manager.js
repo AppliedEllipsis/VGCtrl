@@ -34,7 +34,7 @@ class TimelineStateManager {
     this.expectedState = {
       channel: 'off',      // 'off', 'left', 'right', 'bilateral'
       intensity: 0,        // 0-9
-      channelOverride: 'auto', // 'auto', 'left', 'right', 'bilateral'
+      channelOverride: options.channelOverride || 'auto', // 'auto', 'left', 'right', 'bilateral'
       lastUpdateTime: 0
     };
 

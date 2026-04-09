@@ -285,11 +285,12 @@ class SessionTimeline {
   /**
    * Start timeline tracking with state manager
    */
-  startTracking(ble, clock) {
+  startTracking(ble, clock, channelOverride = 'auto') {
     // Initialize state manager with command scheduling config
     this.stateManager = new TimelineStateManager({
       ble: ble,
       clock: clock,
+      channelOverride: channelOverride,
       tickIntervalMs: 5000,        // Tick every 5 seconds since last command
       transitionWindowMs: 3000,      // Defer if transition within 3 seconds
       minCommandSpacingMs: 2000,   // 2 seconds between commands

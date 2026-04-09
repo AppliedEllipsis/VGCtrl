@@ -75,6 +75,12 @@ class PulsettoApp {
     if (this.ui.audioToggle) {
       this.ui.audioToggle.checked = this.audioEnabled;
     }
+    
+    // Initialize log expansion state
+    if (this.ui.logContainer && this.ui.btnExpandLogs) {
+      this.ui.logContainer.classList.toggle('expanded', this.logsExpanded);
+      this.ui.btnExpandLogs.classList.toggle('active', this.logsExpanded);
+    }
 
     this.log('VG Ctrl initialized (ASCII protocol)', 'info');
     this.log('Click "Scan for Device" to connect', 'info');

@@ -144,7 +144,8 @@ body {
 
 .panel-logs {
   min-height: 0;
-  max-height: 100px;
+  max-height: 180px;
+  margin-bottom: 16px;
 }
 
 .panel-logs details {
@@ -157,11 +158,26 @@ body {
   cursor: pointer;
   user-select: none;
   color: var(--color-text-muted);
-  font-size: 0.6875rem;
-  padding-bottom: 4px;
+  font-size: 0.75rem;
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
 }
 
 .panel-logs summary:hover { color: var(--color-text); }
+
+.panel-logs summary::before {
+  content: '▸';
+  display: inline-block;
+  transition: transform 0.2s ease;
+  font-size: 0.875rem;
+}
+
+.panel-logs details[open] summary::before {
+  transform: rotate(90deg);
+}
 
 /* Connection Row */
 .connection-row {
@@ -728,12 +744,12 @@ input[type="range"]:disabled {
 /* Logs */
 .log-container {
   flex: 1;
-  max-height: 60px;
+  max-height: 120px;
   overflow-y: auto;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  padding: 6px 8px;
+  padding: 8px 10px;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 0.6875rem;
   line-height: 1.5;
@@ -741,7 +757,7 @@ input[type="range"]:disabled {
 }
 
 .log-container.expanded {
-  max-height: 300px;
+  max-height: 400px;
 }
 
 .log-entry {
@@ -767,24 +783,29 @@ input[type="range"]:disabled {
 /* Log Toolbar */
 .log-toolbar {
   display: flex;
-  gap: 6px;
-  margin-bottom: 4px;
-  padding-bottom: 4px;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--color-border);
 }
 
 .log-toolbar .btn {
-  padding: 3px 8px;
-  font-size: 0.625rem;
+  padding: 5px 10px;
+  font-size: 0.6875rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 3px;
+  border-radius: 4px;
   color: var(--color-text);
   cursor: pointer;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .log-toolbar .btn:hover {
   background: var(--color-surface-raised);
+  border-color: var(--color-text-muted);
 }
 
 .log-toolbar .btn.active {
@@ -1061,7 +1082,8 @@ input[type="range"]:disabled {
 .panel-donate {
   background: transparent;
   border: none;
-  padding: 12px 0;
+  padding: 16px 0 20px;
+  margin-top: 8px;
   text-align: center;
 }
 

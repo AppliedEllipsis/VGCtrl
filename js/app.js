@@ -656,7 +656,6 @@ class PulsettoApp {
       }
     }
 
-    const targetStrength = this.baseStrength;
     const fadeCommands = [];
     
     // Activate channel first
@@ -667,55 +666,56 @@ class PulsettoApp {
     
     // Build intensity sequence based on mode
     if (mode === 'in') {
-      // Ramp up: startStrength -> target over ~15 seconds
-      const rampSteps = Math.ceil(Math.abs(targetStrength - startStrength) / 2);
+      // Ramp up: startStrength -> 9 (max)
+      const target = 9;
+      const rampSteps = Math.ceil((target - startStrength) / 2);
       if (rampSteps > 0) {
         for (let i = 0; i < rampSteps; i++) {
-          const level = Math.min(Math.ceil(startStrength + (targetStrength - startStrength) * ((i + 1) / rampSteps)), 9);
+          const level = Math.min(Math.ceil(startStrength + (target - startStrength) * ((i + 1) / rampSteps)), 9);
           fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: i + 1, total: rampSteps, label: `intensity ${level}` });
         }
       } else {
-        // Already at target
-        fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(targetStrength), step: 1, total: 1, label: `intensity ${targetStrength}` });
+        // Already at max
+        fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(9), step: 1, total: 1, label: `intensity 9` });
       }
     } else if (mode === 'out') {
-      // Start at current, then ramp down: startStrength -> 1 over ~15 seconds
+      // Ramp down: startStrength -> 1, then stop
       const rampSteps = Math.ceil((startStrength - 1) / 2);
       if (rampSteps > 0) {
         for (let i = rampSteps - 1; i >= 0; i--) {
           const level = Math.max(Math.ceil(1 + (startStrength - 1) * (i / rampSteps)), 1);
-          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: rampSteps - i, total: rampSteps, label: `intensity ${level}` });
+          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: rampSteps - i, total: rampSteps + 1, label: `intensity ${level}` });
         }
       } else {
-        // Already at minimum
-        fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(1), step: 1, total: 1, label: `intensity 1` });
+        // Already at minimum, just send intensity 1
+        fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(1), step: 1, total: 2, label: `intensity 1` });
       }
+      // Final step: stop (intensity 0)
+      fadeCommands.push({ cmd: PulsettoProtocol.Commands.stop, step: rampSteps + 1, total: rampSteps + 1, label: 'stop' });
     } else if (mode === 'pulse') {
-      // Ramp up then down, starting from current intensity
-      const midPoint = (startStrength + targetStrength) / 2;
-      const upSteps = Math.ceil(Math.abs(targetStrength - startStrength) / 2);
-      const downSteps = Math.ceil((targetStrength - 1) / 2);
+      // Ramp up to 9 then down to 1 then stop
+      const target = 9;
+      const upSteps = Math.ceil((target - startStrength) / 2);
+      const downSteps = Math.ceil((target - 1) / 2);
       
-      // Ramp up to target
+      // Ramp up to 9
       if (upSteps > 0) {
         for (let i = 0; i < upSteps; i++) {
-          const level = Math.min(Math.ceil(startStrength + (targetStrength - startStrength) * ((i + 1) / upSteps)), 9);
-          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: i + 1, total: upSteps + downSteps, label: `intensity ${level} (up)` });
+          const level = Math.min(Math.ceil(startStrength + (target - startStrength) * ((i + 1) / upSteps)), 9);
+          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: i + 1, total: upSteps + downSteps + 1, label: `intensity ${level} (up)` });
         }
       }
       
       // Ramp down to 1
       if (downSteps > 0) {
         for (let i = downSteps - 1; i >= 0; i--) {
-          const level = Math.max(Math.ceil(1 + (targetStrength - 1) * (i / downSteps)), 1);
-          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: upSteps + (downSteps - i), total: upSteps + downSteps, label: `intensity ${level} (down)` });
+          const level = Math.max(Math.ceil(1 + (target - 1) * (i / downSteps)), 1);
+          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: upSteps + (downSteps - i), total: upSteps + downSteps + 1, label: `intensity ${level} (down)` });
         }
       }
       
-      if (fadeCommands.length === 1) {
-        // Only channel activation, add intensity commands
-        fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(targetStrength), step: 1, total: 1, label: `intensity ${targetStrength}` });
-      }
+      // Final step: stop
+      fadeCommands.push({ cmd: PulsettoProtocol.Commands.stop, step: upSteps + downSteps + 1, total: upSteps + downSteps + 1, label: 'stop' });
     }
 
     // Execute fade sequence with step-by-step logging

@@ -648,6 +648,11 @@ input[type="range"]:disabled {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 0.6875rem;
   line-height: 1.5;
+  transition: max-height 0.2s ease;
+}
+
+.log-container.expanded {
+  max-height: 300px;
 }
 
 .log-entry {

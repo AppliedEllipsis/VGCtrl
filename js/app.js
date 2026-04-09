@@ -518,10 +518,16 @@ class PulsettoApp {
   setChannelOverride(channel) {
     this.channelOverride = channel;
 
-    // Update button states
-    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+    // Update button states (all 5 buttons now)
+    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth, this.ui.channelFade].forEach(btn => {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === channel);
     });
+
+    // Handle fade action specially
+    if (channel === 'fade') {
+      this._triggerFade();
+      return;
+    }
 
     // If session is active (running or paused), send channel command with 2s delay then intensity
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
@@ -560,6 +566,71 @@ class PulsettoApp {
     } else {
       this.log(`Channel: ${channel} (${sessionActive ? 'will apply on resume' : 'ready'})`, 'info');
     }
+  }
+
+  // Trigger fade action - ramps intensity up then down over 30 seconds
+  async _triggerFade() {
+    const sessionActive = this.clock.isRunning || this.clock.isPaused;
+    if (!sessionActive || !this.ble.canSendCommands) {
+      this.log('Fade: Start session first', 'warning');
+      return;
+    }
+
+    this.log('Starting fade...', 'info');
+    
+    // Determine current channel
+    let currentChannel = PulsettoProtocol.Commands.activateBilateral;
+    if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
+      switch (this.channelOverride) {
+        case 'left': currentChannel = PulsettoProtocol.Commands.activateLeft; break;
+        case 'right': currentChannel = PulsettoProtocol.Commands.activateRight; break;
+        case 'bilateral': currentChannel = PulsettoProtocol.Commands.activateBilateral; break;
+      }
+    } else if (this.modeEngine) {
+      const result = this.modeEngine.tick(
+        this.clock.elapsedSeconds,
+        this.clock.totalDuration,
+        this.baseStrength
+      );
+      switch (result.activeChannel) {
+        case 'left': currentChannel = PulsettoProtocol.Commands.activateLeft; break;
+        case 'right': currentChannel = PulsettoProtocol.Commands.activateRight; break;
+        case 'bilateral': currentChannel = PulsettoProtocol.Commands.activateBilateral; break;
+      }
+    }
+
+    // Build fade sequence: ramp up from 1 to target over 15s, then down over 15s
+    const targetStrength = this.baseStrength;
+    const fadeCommands = [];
+    
+    // Activate channel first
+    fadeCommands.push(currentChannel);
+    
+    // Ramp up: 1 -> target over 15 seconds (every 2s)
+    const rampSteps = Math.ceil(targetStrength / 2); 
+    for (let i = 0; i < rampSteps; i++) {
+      const level = Math.min(Math.ceil(1 + (targetStrength - 1) * ((i + 1) / rampSteps)), 9);
+      fadeCommands.push(PulsettoProtocol.Commands.intensity(level));
+    }
+    
+    // Ramp down: target -> 1 over 15 seconds (every 2s)
+    for (let i = rampSteps - 1; i >= 0; i--) {
+      const level = Math.max(Math.ceil(1 + (targetStrength - 1) * (i / rampSteps)), 1);
+      fadeCommands.push(PulsettoProtocol.Commands.intensity(level));
+    }
+
+    // Execute fade sequence
+    for (const cmd of fadeCommands) {
+      await this.ble.sendCommand(cmd);
+      if (cmd !== fadeCommands[fadeCommands.length - 1]) {
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+    
+    this.log('Fade complete', 'success');
+    
+    // Clear fade button active state after completion
+    this.ui.channelFade.classList.remove('active');
   }
 
   setTimerMinutes(minutes) {
@@ -743,8 +814,8 @@ class PulsettoApp {
       this.baseStrength
     );
 
-    // Apply channel override if set
-    if (this.channelOverride !== 'auto') {
+    // Apply channel override if set (skip for 'fade' since it's a one-time action)
+    if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
       commands = applyChannelOverride(commands, this.channelOverride);
     }
 

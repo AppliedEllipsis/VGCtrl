@@ -55,7 +55,7 @@ Must be on its own line, in brackets. Everything after this belongs to this mode
 Examples:
 - `mode(5, both)` - Half power on both sides
 - `mode(100%, left)` - User's chosen intensity, left only
-- `mode(0%, off)` - Off
+- `mode(0%, off)` or `mode(0, off)` - Stop (both equivalent, UX shows "both" channel when stopped)
 
 ### `wait(time)` - Do Nothing
 - **time**: `30s` (seconds), `1m` (minutes), `10%` (percent of session), or `session` (all remaining time)

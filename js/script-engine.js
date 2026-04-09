@@ -8,10 +8,10 @@
  * 
  * === HOW SCRIPTS WORK (5th Grade Version) ===
  * 
- * Imagine you're writing instructions for a robot that gives you ear massages.
- * The robot needs to know:
- * 1. How strong to press (intensity 1-9)
- * 2. Which ear(s) to press (left, right, or both)
+ * Imagine you're writing instructions for a device that stimulates your vagus nerve
+ * at the side of your neck. The device needs to know:
+ * 1. How strong to stimulate (intensity 1-9)
+ * 2. Which side of the neck (left, right, or both)
  * 3. How long to wait between changes
  * 
  * Scripts are just a list of these instructions!
@@ -97,6 +97,7 @@ class ScriptValidator {
       'right': 'right',
       'both': 'both',
       'off': 'off',
+      'none': 'none',
       'cycle': 'cycle',
       'strech': 'stretch',
       'session': 'session',
@@ -268,8 +269,9 @@ class ScriptValidator {
           if (!this._isValidIntensity(intensity)) {
             errors.push({ line: lineNum, message: `Invalid intensity: "${intensity}". Use 1-9 or 11%-100%`, code: 'INVALID_INTENSITY' });
           }
-          if (channel && !['left', 'right', 'both', 'off'].includes(channel.toLowerCase())) {
-            warnings.push({ line: lineNum, message: `Unknown channel: "${channel}". Valid: left, right, both, off. Defaulting to both.`, code: 'UNKNOWN_CHANNEL' });
+          const validChannels = ['left', 'right', 'both', 'off', 'none'];
+          if (channel && !validChannels.includes(channel.toLowerCase())) {
+            warnings.push({ line: lineNum, message: `Unknown channel: "${channel}". Valid: left, right, both, off, none. Defaulting to both.`, code: 'UNKNOWN_CHANNEL' });
           }
         }
         break;
@@ -464,10 +466,13 @@ class ScriptEngine {
 
     switch (name) {
       case 'mode':
+        // mode(intensity, channel) - channel defaults to 'both', 'none' also maps to 'both'
+        const channelArg = args[1]?.toLowerCase();
+        const effectiveChannel = channelArg === 'none' ? 'both' : (channelArg || 'both');
         return {
           type: 'mode',
           intensity: this._parseIntensity(args[0]),
-          channel: this._parseChannel(args[1] || 'both')
+          channel: this._parseChannel(effectiveChannel)
         };
 
       case 'wait':
@@ -517,7 +522,8 @@ class ScriptEngine {
 
   _parseChannel(val) {
     const lower = val.toLowerCase();
-    const map = { left: 'A\n', right: 'C\n', both: 'D\n', off: 'off' };
+    // 'none' maps to 'both' (D\n) for UX consistency when stopped
+    const map = { left: 'A\n', right: 'C\n', both: 'D\n', off: 'off', none: 'D\n' };
     return map[lower] || 'D\n';
   }
 
@@ -575,14 +581,15 @@ class ScriptEngine {
     state.phaseDescription = position.phaseDescription;
 
     // Generate commands if needed
+    // Note: mode(0%, off) and mode(0, off) both infer STOP - UX shows "Both" as channel when stopped
     if (position.sendCommands) {
-      if (state.intensity > 0) {
+      if (state.intensity > 0 && state.channel !== 'off') {
+        // Active stimulation: send intensity then channel (order matters)
         state.commands.push(PulsettoProtocol.Commands.intensity(Math.round(state.intensity)));
-      } else {
-        state.commands.push(PulsettoProtocol.Commands.stop);
-      }
-      if (state.channel !== 'off') {
         state.commands.push(state.channel);
+      } else {
+        // Stopped/off: single stop command, channel shown as "both" in UI
+        state.commands.push(PulsettoProtocol.Commands.stop);
       }
     }
 

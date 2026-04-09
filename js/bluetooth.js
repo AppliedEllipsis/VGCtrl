@@ -22,6 +22,11 @@ class PulsettoBluetooth {
     this.wasConnectedBeforeHidden = false;
     this._isManualDisconnect = false;
     
+    // Command queue manager with debouncing and coalescing
+    this.commandQueue = [];
+    this.isProcessingQueue = false;
+    this.commandManager = new CommandQueueManager(this);
+    
     // Text encoder for ASCII commands
     this.encoder = new TextEncoder();
     
@@ -187,6 +192,7 @@ class PulsettoBluetooth {
     this.rxCharacteristic = null;
     this.txCharacteristic = null;
     this.pendingPromises.clear();
+    this.clearCommandQueue();
   }
 
   // Set connection state
@@ -211,7 +217,7 @@ class PulsettoBluetooth {
     }
   }
 
-  // Send ASCII command to device
+  // Send ASCII command to device (queued to prevent GATT conflicts)
   async sendCommand(commandString, options = {}) {
     if (!this.canSendCommands) {
       throw new Error('Not connected - cannot send command');
@@ -219,43 +225,123 @@ class PulsettoBluetooth {
 
     const { withResponse = false, timeout = 5000 } = options;
 
-    try {
-      // Encode ASCII string to Uint8Array
-      const data = this.encoder.encode(commandString);
-      
-      await this.rxCharacteristic.writeValue(data);
-      
-      this.emit('commandSent', { 
-        command: commandString,
-        bytes: Array.from(data),
-        timestamp: Date.now() 
+    // Create a promise that will resolve when the command is processed
+    return new Promise((resolve, reject) => {
+      this.commandQueue.push({
+        commandString,
+        withResponse,
+        timeout,
+        resolve,
+        reject
       });
+      
+      // Start processing if not already
+      if (!this.isProcessingQueue) {
+        this._processCommandQueue();
+      }
+    });
+  }
 
-      if (withResponse) {
-        return this._waitForResponse(timeout);
+  // Process command queue sequentially
+  async _processCommandQueue() {
+    if (this.isProcessingQueue || this.commandQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessingQueue = true;
+
+    while (this.commandQueue.length > 0 && this.canSendCommands) {
+      const item = this.commandQueue.shift();
+      
+      try {
+        const result = await this._executeCommand(item.commandString, item.withResponse, item.timeout);
+        item.resolve(result);
+      } catch (error) {
+        // Don't break queue on GATT operation conflict - retry once after delay
+        if (error.message && error.message.includes('already in progress')) {
+          await new Promise(r => setTimeout(r, 100));
+          try {
+            const result = await this._executeCommand(item.commandString, item.withResponse, item.timeout);
+            item.resolve(result);
+          } catch (retryError) {
+            item.reject(retryError);
+          }
+        } else {
+          item.reject(error);
+        }
       }
 
-      return { success: true };
+      // Small delay between commands to prevent GATT conflicts
+      if (this.commandQueue.length > 0) {
+        await new Promise(r => setTimeout(r, PulsettoProtocol.Timing.commandDelayMs));
+      }
+    }
 
-    } catch (error) {
-      this.emit('commandError', { 
-        error, 
-        command: commandString,
-        timestamp: Date.now() 
-      });
-      throw error;
+    this.isProcessingQueue = false;
+    
+    // Check if more commands were added while processing
+    if (this.commandQueue.length > 0) {
+      this._processCommandQueue();
     }
   }
 
-  // Send multiple commands with delay
+  // Execute a single command
+  async _executeCommand(commandString, withResponse, timeout) {
+    const data = this.encoder.encode(commandString);
+    
+    await this.rxCharacteristic.writeValue(data);
+    
+    this.emit('commandSent', { 
+      command: commandString,
+      bytes: Array.from(data),
+      timestamp: Date.now() 
+    });
+
+    if (withResponse) {
+      return this._waitForResponse(timeout);
+    }
+
+    return { success: true };
+  }
+
+  // Send multiple commands with delay (queued)
   async sendCommands(commandStrings, options = {}) {
     const results = [];
     for (const cmd of commandStrings) {
       results.push(await this.sendCommand(cmd, options));
-      // Small delay between commands
-      await new Promise(r => setTimeout(r, PulsettoProtocol.Timing.commandDelayMs));
     }
     return results;
+  }
+
+  // Clear command queue (useful on disconnect or stop)
+  clearCommandQueue() {
+    // Reject all pending commands
+    while (this.commandQueue.length > 0) {
+      const item = this.commandQueue.shift();
+      item.reject(new Error('Command cancelled'));
+    }
+    this.isProcessingQueue = false;
+  }
+
+  // Send command immediately, bypassing queue (for urgent commands like stop)
+  async sendCommandImmediate(commandString, options = {}) {
+    if (!this.canSendCommands) {
+      throw new Error('Not connected - cannot send command');
+    }
+
+    const { withResponse = false, timeout = 5000 } = options;
+
+    try {
+      const result = await this._executeCommand(commandString, withResponse, timeout);
+      return result;
+    } catch (error) {
+      // Retry once after delay on GATT conflict
+      if (error.message && error.message.includes('already in progress')) {
+        await new Promise(r => setTimeout(r, 100));
+        return await this._executeCommand(commandString, withResponse, timeout);
+      }
+      throw error;
+    }
   }
 
   // Wait for response

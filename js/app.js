@@ -83,7 +83,18 @@ class PulsettoApp {
     // Clamp to valid range
     const clamped = Math.max(0, Math.min(this.clock.totalDuration, newElapsed));
     
-    // Update the clock's elapsed time
+    // Cancel any pending seek
+    if (this._seekTimeout) {
+      clearTimeout(this._seekTimeout);
+    }
+    
+    // Debounce seek operations to prevent GATT conflicts
+    this._seekTimeout = setTimeout(async () => {
+      await this._executeSeek(clamped);
+    }, 50);
+  }
+
+  async _executeSeek(clamped) {
     const wasRunning = this.clock.isRunning;
     
     if (wasRunning) {
@@ -93,7 +104,6 @@ class PulsettoApp {
     
     // Adjust the session start time to reflect the new elapsed
     const now = Date.now();
-    const totalDurationMs = this.clock.totalDuration * 1000;
     const newElapsedMs = clamped * 1000;
     
     // Recalculate session start time
@@ -102,7 +112,7 @@ class PulsettoApp {
     this.clock.remainingSeconds = this.clock.totalDuration - clamped;
     
     // Send updated commands to device for the new position
-    if (this.modeEngine) {
+    if (this.modeEngine && this.ble.canSendCommands) {
       let commands = this.modeEngine.reconnectCommands(
         clamped,
         this.clock.totalDuration,
@@ -113,9 +123,19 @@ class PulsettoApp {
         commands = applyChannelOverride(commands, this.channelOverride);
       }
       
-      if (commands.length > 0 && this.ble.canSendCommands) {
-        this.ble.sendCommands(commands);
-        this.log(`Seeked to ${this._formatTime(clamped)}`, 'info');
+      if (commands.length > 0) {
+        try {
+          // Send commands with 2 second delays between them
+          for (const cmd of commands) {
+            await this.ble.sendCommand(cmd);
+            await new Promise(r => setTimeout(r, 2000));
+          }
+          
+          this.isStimulationActive = !commands.includes(PulsettoProtocol.Commands.stop);
+          this.log(`Seek: ${this._formatTime(clamped)}`, 'info');
+        } catch (err) {
+          this.log(`Seek failed: ${err.message}`, 'warning');
+        }
       }
     }
     
@@ -124,6 +144,8 @@ class PulsettoApp {
     
     // Resume if was running
     if (wasRunning) {
+      // Small delay to let seek commands finish before resuming tick processing
+      await new Promise(r => setTimeout(r, 100));
       this.clock.resume();
     }
     
@@ -449,14 +471,15 @@ class PulsettoApp {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === channel);
     });
 
-    // If session is active (running or paused), immediately send channel change command
+    // If session is active (running or paused), send channel command with 2s delay then intensity
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
     if (sessionActive && this.ble.canSendCommands) {
-      let activationCmd;
+      // Determine target activation command
+      let targetCmd;
       switch (channel) {
-        case 'left': activationCmd = PulsettoProtocol.Commands.activateLeft; break;
-        case 'right': activationCmd = PulsettoProtocol.Commands.activateRight; break;
-        case 'bilateral': activationCmd = PulsettoProtocol.Commands.activateBilateral; break;
+        case 'left': targetCmd = PulsettoProtocol.Commands.activateLeft; break;
+        case 'right': targetCmd = PulsettoProtocol.Commands.activateRight; break;
+        case 'bilateral': targetCmd = PulsettoProtocol.Commands.activateBilateral; break;
         default: 
           // For 'auto', use the mode engine's current channel preference
           if (this.modeEngine) {
@@ -465,31 +488,35 @@ class PulsettoApp {
               this.clock.totalDuration,
               this.baseStrength
             );
-            // Determine activation command from active channel
             switch (result.activeChannel) {
-              case 'left': activationCmd = PulsettoProtocol.Commands.activateLeft; break;
-              case 'right': activationCmd = PulsettoProtocol.Commands.activateRight; break;
-              case 'bilateral': activationCmd = PulsettoProtocol.Commands.activateBilateral; break;
-              default: activationCmd = PulsettoProtocol.Commands.stop;
+              case 'left': targetCmd = PulsettoProtocol.Commands.activateLeft; break;
+              case 'right': targetCmd = PulsettoProtocol.Commands.activateRight; break;
+              case 'bilateral': targetCmd = PulsettoProtocol.Commands.activateBilateral; break;
+              default: targetCmd = PulsettoProtocol.Commands.stop;
             }
           }
       }
       
-      if (activationCmd) {
-        // Use try-catch and await to handle GATT operation conflicts gracefully
+      if (targetCmd) {
         (async () => {
           try {
-            await this.ble.sendCommand(activationCmd);
+            // Send channel command
+            await this.ble.sendCommand(targetCmd);
+            this.log(`→ Channel: ${channel}`, 'info');
+            
+            // Wait 2 seconds then send intensity again
+            await new Promise(r => setTimeout(r, 2000));
             await this.ble.sendCommand(PulsettoProtocol.Commands.intensity(this.baseStrength));
-            this.log(`Channel switched to: ${channel}`, 'success');
+            
+            this.isStimulationActive = targetCmd !== PulsettoProtocol.Commands.stop;
+            this.log(`Channel: ${channel} ✓`, 'success');
           } catch (err) {
-            // Log error but don't crash - GATT operations may conflict
             this.log(`Channel switch failed: ${err.message}`, 'warning');
           }
         })();
       }
     } else {
-      this.log(`Channel override: ${channel} (${sessionActive ? 'will apply on resume' : 'ready'})`, 'info');
+      this.log(`Channel: ${channel} (${sessionActive ? 'will apply on resume' : 'ready'})`, 'info');
     }
   }
 
@@ -507,9 +534,45 @@ class PulsettoApp {
     this.baseStrength = value;
     this.ui.intensityValue.textContent = value;
     
-    // Send to device if running
-    if (this.ble.canSendCommands && this.clock.isRunning && this.isStimulationActive) {
-      this.ble.sendCommand(PulsettoProtocol.Commands.intensity(this.baseStrength));
+    // Send to device if running and active
+    const sessionActive = this.clock.isRunning || this.clock.isPaused;
+    if (this.ble.canSendCommands && sessionActive && this.isStimulationActive) {
+      // Determine current channel
+      let channelCmd;
+      if (this.channelOverride !== 'auto') {
+        switch (this.channelOverride) {
+          case 'left': channelCmd = PulsettoProtocol.Commands.activateLeft; break;
+          case 'right': channelCmd = PulsettoProtocol.Commands.activateRight; break;
+          case 'bilateral': channelCmd = PulsettoProtocol.Commands.activateBilateral; break;
+          default: channelCmd = null;
+        }
+      } else if (this.modeEngine) {
+        const result = this.modeEngine.tick(
+          this.clock.elapsedSeconds,
+          this.clock.totalDuration,
+          this.baseStrength
+        );
+        switch (result.activeChannel) {
+          case 'left': channelCmd = PulsettoProtocol.Commands.activateLeft; break;
+          case 'right': channelCmd = PulsettoProtocol.Commands.activateRight; break;
+          case 'bilateral': channelCmd = PulsettoProtocol.Commands.activateBilateral; break;
+          default: channelCmd = null;
+        }
+      }
+      
+      if (channelCmd) {
+        (async () => {
+          try {
+            // Channel first, wait 2s, then intensity
+            await this.ble.sendCommand(channelCmd);
+            await new Promise(r => setTimeout(r, 2000));
+            await this.ble.sendCommand(PulsettoProtocol.Commands.intensity(this.baseStrength));
+            this.log(`Intensity: ${value}`, 'success');
+          } catch (err) {
+            this.log(`Intensity change failed: ${err.message}`, 'warning');
+          }
+        })();
+      }
     }
   }
 
@@ -545,10 +608,13 @@ class PulsettoApp {
 
     this.log(`Commands to send: ${JSON.stringify(initialCommands)}`, 'info');
 
-    // Send activation commands
+    // Send activation commands with 2 second delays
     if (initialCommands.length > 0) {
       try {
-        await this.ble.sendCommands(initialCommands);
+        for (const cmd of initialCommands) {
+          await this.ble.sendCommand(cmd);
+          await new Promise(r => setTimeout(r, 2000));
+        }
         this.log('Device commands sent successfully', 'success');
       } catch (err) {
         this.log(`Failed to send commands: ${err.message}`, 'error');
@@ -600,19 +666,18 @@ class PulsettoApp {
   async _sendStopCommand() {
     if (!this.ble.canSendCommands) return;
     
+    // Clear any pending commands - stop is urgent
+    this.ble.clearCommandQueue();
+    
     try {
-      // Try modern stop command first
-      await this.ble.sendCommand(PulsettoProtocol.Commands.stop);
-      this.log('Stop command sent', 'info');
+      // Send stop immediately (bypass queue)
+      await this.ble.sendCommandImmediate(PulsettoProtocol.Commands.stop);
+      this.log('Stop sent', 'info');
+      this.isStimulationActive = false;
     } catch (err) {
-      this.log('Modern stop failed, trying legacy', 'warning');
-      try {
-        // Fall back to legacy stop command
-        await this.ble.sendCommand(PulsettoProtocol.Commands.stopLegacy);
-        this.log('Legacy stop command sent', 'info');
-      } catch (err2) {
-        this.log(`Both stop commands failed: ${err2.message}`, 'error');
-      }
+      this.log('Stop failed', 'warning');
+      // Still mark as inactive even if command failed
+      this.isStimulationActive = false;
     }
   }
 
@@ -644,9 +709,18 @@ class PulsettoApp {
       commands = applyChannelOverride(commands, this.channelOverride);
     }
 
-    // Send commands
+    // Send commands with 2 second delays
     if (commands.length > 0 && this.ble.canSendCommands) {
-      this.ble.sendCommands(commands);
+      (async () => {
+        try {
+          for (const cmd of commands) {
+            await this.ble.sendCommand(cmd);
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        } catch (err) {
+          // Silently ignore - next tick will retry
+        }
+      })();
     }
     
     // Update state
@@ -675,7 +749,16 @@ class PulsettoApp {
     }
 
     if (commands.length > 0 && this.ble.canSendCommands) {
-      this.ble.sendCommands(commands);
+      (async () => {
+        try {
+          for (const cmd of commands) {
+            await this.ble.sendCommand(cmd);
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        } catch (err) {
+          this.log(`Resume failed: ${err.message}`, 'warning');
+        }
+      })();
     }
   }
 
@@ -687,7 +770,41 @@ class PulsettoApp {
     this.keepaliveTimer = setInterval(() => {
       if (this.ble.canSendCommands && this.clock.isRunning && this.isStimulationActive) {
         const strength = this.effectiveStrength || this.baseStrength;
-        this.ble.sendCommand(PulsettoProtocol.Commands.keepalive(strength));
+        
+        // Determine current channel
+        let channelCmd;
+        if (this.channelOverride !== 'auto') {
+          switch (this.channelOverride) {
+            case 'left': channelCmd = PulsettoProtocol.Commands.activateLeft; break;
+            case 'right': channelCmd = PulsettoProtocol.Commands.activateRight; break;
+            case 'bilateral': channelCmd = PulsettoProtocol.Commands.activateBilateral; break;
+            default: channelCmd = null;
+          }
+        } else if (this.modeEngine) {
+          const result = this.modeEngine.tick(
+            this.clock.elapsedSeconds,
+            this.clock.totalDuration,
+            this.baseStrength
+          );
+          switch (result.activeChannel) {
+            case 'left': channelCmd = PulsettoProtocol.Commands.activateLeft; break;
+            case 'right': channelCmd = PulsettoProtocol.Commands.activateRight; break;
+            case 'bilateral': channelCmd = PulsettoProtocol.Commands.activateBilateral; break;
+            default: channelCmd = null;
+          }
+        }
+        
+        if (channelCmd) {
+          (async () => {
+            try {
+              await this.ble.sendCommand(channelCmd);
+              await new Promise(r => setTimeout(r, 2000));
+              await this.ble.sendCommand(PulsettoProtocol.Commands.keepalive(strength));
+            } catch (err) {
+              // Keepalive errors are silent
+            }
+          })();
+        }
       }
     }, interval);
   }

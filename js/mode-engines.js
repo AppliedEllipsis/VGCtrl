@@ -509,14 +509,14 @@ const ModeDescriptions = {
     timing: 'Last 20%: -1 intensity, then -2'
   },
   focus: {
-    name: 'Focus',
+    name: 'Focus (left)',
     summary: 'Left-ear only stimulation with 30-second on/off cycles. Enhances concentration without overstimulation.',
     channel: 'Left ear only',
     pattern: '30s ON / 30s OFF duty cycle',
     timing: 'Repeats throughout session'
   },
   focus_r: {
-    name: 'Focus R',
+    name: 'Focus (right)',
     summary: 'Right-ear only stimulation with 30-second on/off cycles. Alternate focus enhancement with right-side bias.',
     channel: 'Right ear only',
     pattern: '30s ON / 30s OFF duty cycle',

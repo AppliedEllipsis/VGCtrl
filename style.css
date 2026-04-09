@@ -142,6 +142,51 @@ body {
 
 .panel-compact { padding: 6px 10px; }
 
+/* Device Tips Panel */
+.panel-tips {
+  background: var(--color-surface-raised);
+  padding: 6px 10px;
+}
+
+.panel-tips details {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-tips summary {
+  cursor: pointer;
+  user-select: none;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.panel-tips summary:hover { color: var(--color-text); }
+
+.tips-content {
+  padding: 8px 0 4px;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.tips-content p {
+  margin-bottom: 6px;
+}
+
+.tips-content p:last-child {
+  margin-bottom: 0;
+}
+
+.tips-content strong {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
 .panel-logs {
   min-height: 0;
   max-height: none;

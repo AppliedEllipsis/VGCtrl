@@ -64,9 +64,14 @@ class SessionTimeline {
           <span class="timeline-title">Session Timeline</span>
           <span class="timeline-position">00:00 / 00:00</span>
         </div>
-        
+
         <div class="timeline-canvas-wrapper">
           <canvas class="timeline-canvas"></canvas>
+          <div class="timeline-intensity-scale">
+            <span>9</span>
+            <span>5</span>
+            <span>0</span>
+          </div>
           <div class="timeline-scrubber">
             <div class="scrubber-handle">
               <div class="scrubber-tooltip">00:00</div>
@@ -74,10 +79,10 @@ class SessionTimeline {
           </div>
           <div class="timeline-hover-tooltip hidden"></div>
         </div>
-        
+
         <div class="timeline-controls">
           <button class="btn-timeline btn-rewind" title="Rewind 10s">
-            <svg viewBox="0 0 24 24" width="18" height="18">
+            <svg viewBox="0 0 24 24" width="16" height="16">
               <path fill="currentColor" d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/>
             </svg>
           </button>
@@ -89,32 +94,32 @@ class SessionTimeline {
           <button class="btn-timeline btn-fwd-10" title="Forward 10s">+10s</button>
           <button class="btn-timeline btn-fwd-30" title="Forward 30s">+30s</button>
           <button class="btn-timeline btn-fast-fwd" title="Fast Forward 10s">
-            <svg viewBox="0 0 24 24" width="18" height="18">
+            <svg viewBox="0 0 24 24" width="16" height="16">
               <path fill="currentColor" d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/>
             </svg>
           </button>
         </div>
-        
+
         <div class="timeline-legend">
           <div class="legend-item">
             <span class="legend-color active-left"></span>
-            <span>Left Active</span>
+            <span>Left</span>
           </div>
           <div class="legend-item">
             <span class="legend-color active-right"></span>
-            <span>Right Active</span>
+            <span>Right</span>
           </div>
           <div class="legend-item">
             <span class="legend-color active-both"></span>
-            <span>Both Active</span>
+            <span>Both</span>
           </div>
           <div class="legend-item">
             <span class="legend-color active-rest"></span>
-            <span>Rest/Off</span>
+            <span>Off</span>
           </div>
-          <div class="legend-item breathing">
+          <div class="legend-item breathing hidden">
             <span class="legend-color active-breathing"></span>
-            <span>Breathing-gated</span>
+            <span>Breathing</span>
           </div>
         </div>
       </div>
@@ -225,15 +230,15 @@ class SessionTimeline {
 
   _hover(e) {
     if (this.scrubbing || this.state.totalDuration === 0) return;
-    
+
     const rect = this.canvas.getBoundingClientRect();
     const x = Math.max(0, Math.min(this.width, e.clientX - rect.left));
     const progress = x / this.width;
     const time = Math.floor(progress * this.state.totalDuration);
-    
-    // Show hover tooltip with mode state at that time
+
+    // Show hover tooltip with mode state and intensity at that time
     const modeInfo = this._getModeStateAt(time);
-    this.hoverTooltip.textContent = `${this._formatTime(time)} - ${modeInfo}`;
+    this.hoverTooltip.textContent = `${this._formatTime(time)} | ${modeInfo}`;
     this.hoverTooltip.style.left = `${x}px`;
     this.hoverTooltip.classList.remove('hidden');
   }
@@ -244,9 +249,21 @@ class SessionTimeline {
 
   _getModeStateAt(time) {
     if (!this.modeEngine || !this.state.mode) return 'Unknown';
-    
+
     const result = this.modeEngine.tick(time, this.state.totalDuration, this.state.baseStrength);
-    return result.statusText || 'Unknown';
+    const channel = result.activeChannel || 'off';
+    const intensity = result.effectiveStrength !== undefined ? result.effectiveStrength : this.state.baseStrength;
+
+    // Format: "Channel | Int 5" or "Off" if intensity is 0
+    if (intensity === 0 || channel === 'off') {
+      return 'Off';
+    }
+
+    const channelLabel = channel === 'left' ? 'Left' :
+                        channel === 'right' ? 'Right' :
+                        channel === 'bilateral' ? 'Both' : channel;
+
+    return `${channelLabel} | Int ${intensity}`;
   }
 
   setMode(mode, totalDuration, baseStrength = 8) {
@@ -353,17 +370,53 @@ class SessionTimeline {
 
   _updateScrubber() {
     if (this.state.totalDuration === 0) return;
-    
+
     const progress = this.state.elapsed / this.state.totalDuration;
     const x = progress * this.width;
-    
+
+    // Get current intensity and channel for tooltip
+    let currentIntensity = this.state.baseStrength;
+    let currentChannel = 'off';
+
+    if (this.modeEngine) {
+      const result = this.modeEngine.tick(
+        this.state.elapsed,
+        this.state.totalDuration,
+        this.state.baseStrength
+      );
+      currentIntensity = result.effectiveStrength !== undefined ? result.effectiveStrength : this.state.baseStrength;
+      currentChannel = result.activeChannel || 'off';
+    }
+
+    const channelLabel = currentChannel === 'off' ? 'Off' :
+                        currentChannel === 'left' ? 'L' :
+                        currentChannel === 'right' ? 'R' : 'B';
+
     this.scrubber.style.left = `${x}px`;
-    this.tooltip.textContent = this._formatTime(this.state.elapsed);
+    this.tooltip.textContent = `${this._formatTime(this.state.elapsed)} ${channelLabel}${currentIntensity}`;
   }
 
   _updatePositionDisplay() {
-    this.positionDisplay.textContent = 
-      `${this._formatTime(this.state.elapsed)} / ${this._formatTime(this.state.totalDuration)}`;
+    // Get current intensity from mode engine or base strength
+    let currentIntensity = this.state.baseStrength;
+    let currentChannel = 'off';
+
+    if (this.modeEngine && this.state.totalDuration > 0) {
+      const result = this.modeEngine.tick(
+        this.state.elapsed,
+        this.state.totalDuration,
+        this.state.baseStrength
+      );
+      currentIntensity = result.effectiveStrength !== undefined ? result.effectiveStrength : this.state.baseStrength;
+      currentChannel = result.activeChannel || 'off';
+    }
+
+    const channelLabel = currentChannel === 'off' ? 'Off' :
+                        currentChannel === 'left' ? 'L' :
+                        currentChannel === 'right' ? 'R' : 'B';
+
+    this.positionDisplay.textContent =
+      `${this._formatTime(this.state.elapsed)} / ${this._formatTime(this.state.totalDuration)} | ${channelLabel}${currentIntensity}`;
   }
 
   _updatePlayStatus() {
@@ -449,48 +502,54 @@ class SessionTimeline {
     const phaseDuration = this.state.totalDuration / phases.length;
     const phaseWidth = this.width / phases.length;
     const barY = (this.height - this.options.segmentHeight) / 2;
-    
+
     // Draw phase segments
     phases.forEach((phase, i) => {
       const x = i * phaseWidth;
       const isFadePhase = i >= 4; // Last phase has fade
-      
+
       // Base color by channel
       let color = this._getChannelColor(phase);
-      
+
       // Draw segment background
       this.ctx.fillStyle = color;
       this.ctx.fillRect(x + 1, barY, phaseWidth - 2, this.options.segmentHeight);
-      
-      // Draw fade overlay for last phase
+
+      // Draw intensity overlay (brightness = intensity level)
+      const baseStrength = this.state.baseStrength;
+      const intensityOpacity = (baseStrength / 9) * 0.4; // max 40% opacity
+      this.ctx.fillStyle = `rgba(255,255,255,${intensityOpacity})`;
+      this.ctx.fillRect(x + 1, barY, phaseWidth - 2, this.options.segmentHeight);
+
+      // Draw fade overlay for last phase (intensity drop)
       if (isFadePhase) {
-        const gradient = this.ctx.createLinearGradient(x, 0, x + phaseWidth, 0);
-        gradient.addColorStop(0, 'rgba(0,0,0,0)');
-        gradient.addColorStop(0.5, 'rgba(0,0,0,0.3)');
-        gradient.addColorStop(1, 'rgba(0,0,0,0.5)');
-        this.ctx.fillStyle = gradient;
+        const fadeGradient = this.ctx.createLinearGradient(x, 0, x + phaseWidth, 0);
+        fadeGradient.addColorStop(0, `rgba(255,255,255,${intensityOpacity})`);
+        fadeGradient.addColorStop(0.5, `rgba(255,255,255,${intensityOpacity * 0.5})`);
+        fadeGradient.addColorStop(1, 'rgba(0,0,0,0.5)');
+        this.ctx.fillStyle = fadeGradient;
         this.ctx.fillRect(x + 1, barY, phaseWidth - 2, this.options.segmentHeight);
       }
-      
+
       // Draw phase label
       this.ctx.fillStyle = '#fff';
-      this.ctx.font = 'bold 11px system-ui, sans-serif';
+      this.ctx.font = 'bold 10px system-ui, sans-serif';
       this.ctx.textAlign = 'center';
       const labels = { 'D': 'Both', 'A': 'Left', 'C': 'Right' };
-      this.ctx.fillText(labels[phase], x + phaseWidth / 2, barY + 20);
-      
-      // Draw time label
-      this.ctx.fillStyle = '#8b949e';
-      this.ctx.font = '10px system-ui, sans-serif';
-      const startTime = i * phaseDuration;
-      this.ctx.fillText(this._formatTime(startTime), x + 5, barY - 5);
+      this.ctx.fillText(labels[phase], x + phaseWidth / 2, barY + 18);
+
+      // Draw intensity label
+      const displayIntensity = isFadePhase ? '↓' : baseStrength;
+      this.ctx.fillStyle = '#fff';
+      this.ctx.font = '9px system-ui, sans-serif';
+      this.ctx.fillText(displayIntensity, x + phaseWidth / 2, barY + 30);
     });
-    
-    // Draw fade annotation
+
+    // Draw intensity annotation
     this.ctx.fillStyle = '#f0883e';
-    this.ctx.font = '10px system-ui, sans-serif';
+    this.ctx.font = '9px system-ui, sans-serif';
     this.ctx.textAlign = 'right';
-    this.ctx.fillText('↓ Fade -1, -2', this.width - 5, barY + this.options.segmentHeight + 15);
+    this.ctx.fillText(`Intensity: ${baseStrength} → fade`, this.width - 5, barY + this.options.segmentHeight + 12);
   }
 
   _renderFocusTimeline() {
@@ -499,42 +558,49 @@ class SessionTimeline {
     const cycleWidth = this.width / numCycles;
     const barY = (this.height - this.options.segmentHeight) / 2;
     const segmentHeight = this.options.segmentHeight;
-    
+    const baseStrength = this.state.baseStrength;
+    const intensityHeight = segmentHeight * (baseStrength / 9);
+
     for (let i = 0; i < numCycles; i++) {
       const x = i * cycleWidth;
       const onWidth = cycleWidth * 0.5;
       const offWidth = cycleWidth * 0.5;
-      
-      // ON segment (left channel)
-      this.ctx.fillStyle = '#1f6feb'; // left color
-      this.ctx.fillRect(x, barY, onWidth - 1, segmentHeight);
-      
-      // OFF segment
+
+      // OFF segment (background)
       this.ctx.fillStyle = '#484f58';
-      this.ctx.fillRect(x + onWidth, barY, offWidth - 1, segmentHeight);
-      
-      // Draw stripes on ON segment
-      this.ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      this.ctx.fillRect(x, barY, cycleWidth - 1, segmentHeight);
+
+      // ON segment (left channel) - filled to intensity level
+      this.ctx.fillStyle = '#1f6feb'; // left color
+      this.ctx.fillRect(x, barY + segmentHeight - intensityHeight, onWidth - 1, intensityHeight);
+
+      // Draw intensity stripes on ON segment
+      this.ctx.strokeStyle = 'rgba(255,255,255,0.2)';
       this.ctx.lineWidth = 1;
-      for (let s = 10; s < onWidth; s += 10) {
+      for (let s = 0; s < intensityHeight; s += 6) {
         this.ctx.beginPath();
-        this.ctx.moveTo(x + s, barY);
-        this.ctx.lineTo(x + s, barY + segmentHeight);
+        this.ctx.moveTo(x, barY + segmentHeight - s);
+        this.ctx.lineTo(x + onWidth - 1, barY + segmentHeight - s);
         this.ctx.stroke();
       }
-      
+
       // Label
       this.ctx.fillStyle = '#fff';
       this.ctx.font = '10px system-ui, sans-serif';
       this.ctx.textAlign = 'center';
       this.ctx.fillText(`${i + 1}`, x + cycleWidth / 2, barY + 20);
+
+      // Intensity label on ON segments
+      this.ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      this.ctx.font = 'bold 9px system-ui, sans-serif';
+      this.ctx.fillText(baseStrength, x + onWidth / 2, barY + segmentHeight - intensityHeight + 12);
     }
-    
+
     // Legend annotation
     this.ctx.fillStyle = '#8b949e';
-    this.ctx.font = '11px system-ui, sans-serif';
+    this.ctx.font = '10px system-ui, sans-serif';
     this.ctx.textAlign = 'left';
-    this.ctx.fillText('30s ON / 30s OFF cycles', 5, barY - 10);
+    this.ctx.fillText(`${baseStrength} intensity | 30s ON / 30s OFF`, 5, barY - 8);
   }
 
   _renderPainTimeline() {
@@ -542,58 +608,70 @@ class SessionTimeline {
     const waveHeight = this.options.segmentHeight;
     const amplitude = waveHeight / 4;
     const centerY = barY + waveHeight / 2;
-    
-    // Draw sine wave background
+    const baseStrength = this.state.baseStrength;
+    const intensityVariation = Math.min(2, baseStrength * 0.2); // ±20% or max ±2
+
+    // Draw base intensity background
+    const baseIntensityHeight = waveHeight * (baseStrength / 9);
+    this.ctx.fillStyle = 'rgba(35, 134, 54, 0.3)'; // right color with alpha
+    this.ctx.fillRect(0, barY + waveHeight - baseIntensityHeight, this.width, baseIntensityHeight);
+
+    // Draw sine wave background showing intensity variation
     const gradient = this.ctx.createLinearGradient(0, barY, 0, barY + waveHeight);
-    gradient.addColorStop(0, '#238636');
-    gradient.addColorStop(1, '#1f6feb');
-    
+    gradient.addColorStop(0, 'rgba(35, 134, 54, 0.8)');
+    gradient.addColorStop(0.5, 'rgba(31, 111, 235, 0.6)');
+    gradient.addColorStop(1, 'rgba(137, 87, 229, 0.4)');
+
     this.ctx.fillStyle = gradient;
     this.ctx.beginPath();
     this.ctx.moveTo(0, centerY);
-    
+
     const period = 20; // 20 second period
     const frequency = (this.state.totalDuration / period) * 2 * Math.PI / this.width;
-    
+
     for (let x = 0; x <= this.width; x += 2) {
       const t = (x / this.width) * this.state.totalDuration;
       const sine = Math.sin((t % period) / period * 2 * Math.PI);
-      const y = centerY + sine * amplitude;
+      // Wave shows intensity variation around baseStrength
+      const intensityFactor = (baseStrength + sine * intensityVariation) / 9;
+      const y = barY + waveHeight * (1 - intensityFactor);
       this.ctx.lineTo(x, y);
     }
-    
+
     this.ctx.lineTo(this.width, barY + waveHeight);
     this.ctx.lineTo(0, barY + waveHeight);
     this.ctx.closePath();
     this.ctx.fill();
-    
-    // Draw wave line
+
+    // Draw intensity line
     this.ctx.strokeStyle = '#fff';
     this.ctx.lineWidth = 2;
     this.ctx.beginPath();
     for (let x = 0; x <= this.width; x += 2) {
       const t = (x / this.width) * this.state.totalDuration;
       const sine = Math.sin((t % period) / period * 2 * Math.PI);
-      const y = centerY + sine * amplitude;
+      const intensityFactor = Math.max(0, Math.min(1, (baseStrength + sine * intensityVariation) / 9));
+      const y = barY + waveHeight * (1 - intensityFactor);
       if (x === 0) this.ctx.moveTo(x, y);
       else this.ctx.lineTo(x, y);
     }
     this.ctx.stroke();
-    
+
     // Labels for periods
     const numPeriods = Math.ceil(this.state.totalDuration / period);
     this.ctx.fillStyle = '#8b949e';
-    this.ctx.font = '10px system-ui, sans-serif';
+    this.ctx.font = '9px system-ui, sans-serif';
     this.ctx.textAlign = 'center';
     for (let i = 0; i < numPeriods; i++) {
       const x = (i * period / this.state.totalDuration) * this.width;
       this.ctx.fillText(`~${i + 1}`, x + 10, barY - 5);
     }
-    
-    // Annotation
+
+    // Annotation with current intensity
     this.ctx.fillStyle = '#8b949e';
-    this.ctx.textAlign = 'right';
-    this.ctx.fillText('±1 intensity wave (20s period)', this.width - 5, barY - 10);
+    this.ctx.font = '10px system-ui, sans-serif';
+    this.ctx.textAlign = 'left';
+    this.ctx.fillText(`Intensity ${baseStrength} ±${intensityVariation.toFixed(1)} (20s wave)`, 5, barY - 8);
   }
 
   _renderHeadacheTimeline() {
@@ -603,39 +681,51 @@ class SessionTimeline {
     const numCycles = Math.ceil(this.state.totalDuration / cycle);
     const cycleWidth = this.width / numCycles;
     const barY = (this.height - this.options.segmentHeight) / 2;
-    
+    const segmentHeight = this.options.segmentHeight;
+    const baseStrength = this.state.baseStrength;
+    const intensityHeight = segmentHeight * (baseStrength / 9);
+
     for (let i = 0; i < numCycles; i++) {
       const x = i * cycleWidth;
       const onWidth = cycleWidth * (burstOn / cycle);
       const offWidth = cycleWidth * (burstOff / cycle);
-      
-      // ON segment (both)
-      this.ctx.fillStyle = '#8957e5'; // both color
-      this.ctx.fillRect(x, barY, onWidth - 1, this.options.segmentHeight);
-      
-      // Burst pattern stripes
-      this.ctx.fillStyle = 'rgba(255,255,255,0.15)';
-      const burstCount = 4;
-      const stripeWidth = onWidth / burstCount / 2;
-      for (let b = 0; b < burstCount * 2; b += 2) {
-        this.ctx.fillRect(x + b * stripeWidth, barY, stripeWidth - 1, this.options.segmentHeight);
-      }
-      
-      // OFF segment
+
+      // OFF segment (background)
       this.ctx.fillStyle = '#484f58';
-      this.ctx.fillRect(x + onWidth, barY, offWidth - 1, this.options.segmentHeight);
-      
+      this.ctx.fillRect(x, barY, cycleWidth - 1, segmentHeight);
+
+      // ON segment (both) - filled to intensity level
+      this.ctx.fillStyle = '#8957e5'; // both color
+      this.ctx.fillRect(x, barY + segmentHeight - intensityHeight, onWidth - 1, intensityHeight);
+
+      // Burst pattern stripes showing intensity
+      this.ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      this.ctx.lineWidth = 1;
+      const burstCount = Math.max(3, Math.floor(baseStrength / 3));
+      for (let b = 0; b < burstCount; b++) {
+        const stripeY = barY + segmentHeight - (intensityHeight * (b + 1) / burstCount);
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, stripeY);
+        this.ctx.lineTo(x + onWidth - 1, stripeY);
+        this.ctx.stroke();
+      }
+
       // Label
       this.ctx.fillStyle = '#fff';
       this.ctx.font = '10px system-ui, sans-serif';
       this.ctx.textAlign = 'center';
-      this.ctx.fillText(`B${i + 1}`, x + onWidth / 2, barY + 20);
+      this.ctx.fillText(`B${i + 1}`, x + onWidth / 2, barY + 18);
+
+      // Intensity label
+      this.ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      this.ctx.font = 'bold 9px system-ui, sans-serif';
+      this.ctx.fillText(baseStrength, x + onWidth / 2, barY + segmentHeight - intensityHeight + 12);
     }
-    
+
     this.ctx.fillStyle = '#8b949e';
-    this.ctx.font = '11px system-ui, sans-serif';
+    this.ctx.font = '10px system-ui, sans-serif';
     this.ctx.textAlign = 'left';
-    this.ctx.fillText('2min ON / 30s OFF burst cycles', 5, barY - 10);
+    this.ctx.fillText(`${baseStrength} intensity | 2min ON / 30s OFF`, 5, barY - 8);
   }
 
   _renderBreathingTimeline() {
@@ -644,81 +734,126 @@ class SessionTimeline {
     const hold = isCalm ? 5 : 4;
     const exhale = isCalm ? 7 : 5;
     const cycle = inhale + hold + exhale;
-    
+    const baseStrength = this.state.baseStrength;
+    const segmentHeight = this.options.segmentHeight;
+    const intensityHeight = segmentHeight * (baseStrength / 9);
+
     const numCycles = Math.ceil(this.state.totalDuration / cycle);
     const cycleWidth = this.width / numCycles;
-    const barY = (this.height - this.options.segmentHeight) / 2;
+    const barY = (this.height - segmentHeight) / 2;
     const leadTime = 3;
-    
+
     for (let i = 0; i < numCycles; i++) {
       const x = i * cycleWidth;
       const inhaleWidth = cycleWidth * (inhale / cycle);
       const holdWidth = cycleWidth * (hold / cycle);
       const exhaleWidth = cycleWidth * (exhale / cycle);
-      
-      // Inhale (stimulation starts after lead time)
-      const leadWidth = cycleWidth * (leadTime / cycle);
-      const activeInhaleWidth = inhaleWidth - leadWidth;
-      
+
       // Lead portion (no stimulation)
+      const leadWidth = cycleWidth * (leadTime / cycle);
       this.ctx.fillStyle = '#484f58';
-      this.ctx.fillRect(x, barY, leadWidth - 1, this.options.segmentHeight);
-      
-      // Active inhale
+      this.ctx.fillRect(x, barY, leadWidth - 1, segmentHeight);
+
+      // Active inhale - filled to intensity level
+      const activeInhaleWidth = inhaleWidth - leadWidth;
       const inhaleGrad = this.ctx.createLinearGradient(x + leadWidth, barY, x + inhaleWidth, barY);
       inhaleGrad.addColorStop(0, '#8957e5');
       inhaleGrad.addColorStop(1, '#238636');
       this.ctx.fillStyle = inhaleGrad;
-      this.ctx.fillRect(x + leadWidth, barY, activeInhaleWidth - 1, this.options.segmentHeight);
-      
-      // Hold (active)
+      this.ctx.fillRect(x + leadWidth, barY + segmentHeight - intensityHeight, activeInhaleWidth - 1, intensityHeight);
+
+      // Hold (active) - at intensity level
       this.ctx.fillStyle = '#238636';
-      this.ctx.fillRect(x + inhaleWidth, barY, holdWidth - 1, this.options.segmentHeight);
-      
-      // Exhale (rest)
+      this.ctx.fillRect(x + inhaleWidth, barY + segmentHeight - intensityHeight, holdWidth - 1, intensityHeight);
+
+      // Exhale (rest) - full height but dimmed
       this.ctx.fillStyle = '#484f58';
-      this.ctx.fillRect(x + inhaleWidth + holdWidth, barY, exhaleWidth - 1, this.options.segmentHeight);
-      
-      // Phase labels inside
-      this.ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      this.ctx.fillRect(x + inhaleWidth + holdWidth, barY, exhaleWidth - 1, segmentHeight);
+
+      // Intensity stripes on active segments
+      this.ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      this.ctx.lineWidth = 1;
+      for (let s = 0; s < intensityHeight; s += 5) {
+        const y = barY + segmentHeight - s;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + leadWidth, y);
+        this.ctx.lineTo(x + inhaleWidth + holdWidth - 1, y);
+        this.ctx.stroke();
+      }
+
+      // Phase labels
+      this.ctx.fillStyle = 'rgba(255,255,255,0.8)';
       this.ctx.font = '9px system-ui, sans-serif';
       this.ctx.textAlign = 'center';
       this.ctx.fillText('▲', x + leadWidth + activeInhaleWidth / 2, barY + 12);
       this.ctx.fillText('●', x + inhaleWidth + holdWidth / 2, barY + 12);
       this.ctx.fillText('▼', x + inhaleWidth + holdWidth + exhaleWidth / 2, barY + 12);
-      
-      // Cycle number
+
+      // Cycle number and intensity
       this.ctx.fillStyle = '#8b949e';
-      this.ctx.font = '10px system-ui, sans-serif';
-      this.ctx.fillText(`${i + 1}`, x + cycleWidth / 2, barY + this.options.segmentHeight + 12);
+      this.ctx.font = '9px system-ui, sans-serif';
+      this.ctx.fillText(`${i + 1}`, x + cycleWidth / 2, barY + segmentHeight + 10);
     }
-    
-    // Annotation
+
+    // Annotation with intensity
     this.ctx.fillStyle = '#8b949e';
-    this.ctx.font = '11px system-ui, sans-serif';
+    this.ctx.font = '10px system-ui, sans-serif';
     this.ctx.textAlign = 'left';
-    this.ctx.fillText(`${inhale}s inhale → ${hold}s hold → ${exhale}s exhale`, 5, barY - 10);
+    this.ctx.fillText(`${baseStrength} intensity | ${inhale}s↑ ${hold}s● ${exhale}s↓`, 5, barY - 8);
   }
 
   _renderContinuousTimeline() {
     const barY = (this.height - this.options.segmentHeight) / 2;
-    const gradient = this.ctx.createLinearGradient(0, barY, 0, barY + this.options.segmentHeight);
+    const segmentHeight = this.options.segmentHeight;
+    const baseStrength = this.state.baseStrength;
+    const intensityHeight = segmentHeight * (baseStrength / 9);
+
+    // Background gradient
+    const gradient = this.ctx.createLinearGradient(0, barY, 0, barY + segmentHeight);
     gradient.addColorStop(0, '#8957e5');
     gradient.addColorStop(0.5, '#1f6feb');
     gradient.addColorStop(1, '#238636');
-    
+
+    // Full height background (dimmed)
     this.ctx.fillStyle = gradient;
-    this.ctx.fillRect(0, barY, this.width, this.options.segmentHeight);
-    
-    // Add subtle pulse animation indication
-    this.ctx.fillStyle = 'rgba(255,255,255,0.1)';
-    const pulseX = (Date.now() / 1000 % 1) * this.width;
-    this.ctx.fillRect(pulseX - 20, barY, 40, this.options.segmentHeight);
-    
+    this.ctx.globalAlpha = 0.3;
+    this.ctx.fillRect(0, barY, this.width, segmentHeight);
+    this.ctx.globalAlpha = 1.0;
+
+    // Active intensity level (brighter)
+    this.ctx.fillStyle = gradient;
+    this.ctx.fillRect(0, barY + segmentHeight - intensityHeight, this.width, intensityHeight);
+
+    // Intensity stripes
+    this.ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    this.ctx.lineWidth = 1;
+    for (let s = 0; s < intensityHeight; s += 6) {
+      const y = barY + segmentHeight - s;
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, y);
+      this.ctx.lineTo(this.width, y);
+      this.ctx.stroke();
+    }
+
+    // Current intensity indicator line
+    this.ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, barY + segmentHeight - intensityHeight);
+    this.ctx.lineTo(this.width, barY + segmentHeight - intensityHeight);
+    this.ctx.stroke();
+
+    // Annotation with intensity
     this.ctx.fillStyle = '#8b949e';
-    this.ctx.font = '11px system-ui, sans-serif';
+    this.ctx.font = '10px system-ui, sans-serif';
     this.ctx.textAlign = 'left';
-    this.ctx.fillText('Continuous bilateral stimulation', 5, barY - 10);
+    this.ctx.fillText(`${baseStrength} intensity | Continuous bilateral`, 5, barY - 8);
+
+    // Intensity value on right
+    this.ctx.fillStyle = '#fff';
+    this.ctx.font = 'bold 11px system-ui, sans-serif';
+    this.ctx.textAlign = 'right';
+    this.ctx.fillText(baseStrength, this.width - 5, barY + segmentHeight - intensityHeight - 4);
   }
 
   _renderPositionMarker() {

@@ -139,6 +139,10 @@
           <div class="breathing-circle" id="breathing-circle"></div>
           <div class="breathing-text" id="breathing-text">Inhale</div>
         </div>
+        <div id="breathing-hint" class="breathing-hint hidden">
+          <span class="hint-icon">💡</span>
+          <span class="hint-text">Breathe along with the circle. Stimulation to your neck activates during inhale and hold.</span>
+        </div>
 
         <!-- Action Buttons -->
         <div class="action-buttons">
@@ -179,6 +183,10 @@
   <!-- Protocol (ASCII - confirmed in official app v2.2.91) -->
   <script src="js/protocol.js"></script>
   <script src="js/bluetooth.js"></script>
+
+  <!-- Script Engine (NEW - replaces hardcoded mode engines) -->
+  <script src="js/script-engine.js"></script>
+  <script src="js/scripts-default.js"></script>
 
   <!-- Session & UI -->
   <script src="js/session-clock.js"></script>

@@ -181,6 +181,7 @@ class PulsettoApp {
     this.ui.breathingGuide = document.getElementById('breathing-guide');
     this.ui.breathingCircle = document.getElementById('breathing-circle');
     this.ui.breathingText = document.getElementById('breathing-text');
+    this.ui.breathingHint = document.getElementById('breathing-hint');
     
     // Action buttons
     this.ui.btnStart = document.getElementById('btn-start');
@@ -901,6 +902,10 @@ class PulsettoApp {
       this.timeline.pauseTracking();
     }
     this.clock.pause();
+
+    // Recalculate intensity upper bound based on current elapsed time
+    // (some modes may want to limit max intensity as session progresses)
+    this._recalculateIntensityBound();
   }
 
   resumeSession() {
@@ -1227,8 +1232,25 @@ class PulsettoApp {
   _updateBreathingUI() {
     const modeConfig = PulsettoProtocol.Modes[this.selectedMode];
     const isBreathing = modeConfig?.breathing || false;
-    
+
     this.ui.breathingGuide.classList.toggle('hidden', !isBreathing);
+    this.ui.breathingHint?.classList.toggle('hidden', !isBreathing);
+
+    // Update intensity slider max bound based on mode
+    this._recalculateIntensityBound();
+  }
+
+  _recalculateIntensityBound() {
+    const modeConfig = PulsettoProtocol.Modes[this.selectedMode];
+    const maxIntensity = modeConfig?.maxIntensity || 9;
+
+    // Update slider max attribute
+    this.ui.intensitySlider.max = maxIntensity;
+
+    // If current intensity exceeds new max, clamp it
+    if (this.baseStrength > maxIntensity) {
+      this.setIntensity(maxIntensity);
+    }
   }
 
   _updateBreathingAnimation(result) {

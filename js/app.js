@@ -458,9 +458,14 @@ class PulsettoApp {
       requestAnimationFrame(() => {
         this.timeline.setMode(mode, this.timerMinutes * 60, this.baseStrength);
         this.timeline.updateProgress(0, false);
+        this.log(`Timeline setMode complete for ${mode}`, 'info');
 
         // Reset channel override to match new mode's initial channel
+        this.log(`Reading first step for ${mode}...`, 'info');
+        this.log(`  script exists: ${!!this.timeline.script}`, 'info');
+        this.log(`  instructions count: ${this.timeline.script?.instructions?.length || 0}`, 'info');
         const firstStep = this.timeline.script?.getInstructionAt(0);
+        this.log(`  firstStep: ${JSON.stringify(firstStep)}`, 'info');
         if (firstStep) {
           const initialChannel = firstStep.channel === 'off' ? 'bilateral' : (firstStep.channel || 'bilateral');
           this.channelOverride = initialChannel;

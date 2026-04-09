@@ -38,6 +38,18 @@ class SessionTimeline {
   _init() {
     this._buildDOM();
     this._bindEvents();
+    
+    // Defer initial resize until container is laid out
+    requestAnimationFrame(() => {
+      this._resizeCanvas();
+      this.render();
+    });
+    
+    // Also resize on window load to ensure proper dimensions
+    window.addEventListener('load', () => {
+      this._resizeCanvas();
+      this.render();
+    });
   }
 
   _buildDOM() {
@@ -294,7 +306,12 @@ class SessionTimeline {
   }
 
   render() {
-    if (!this.ctx || !this.width) return;
+    if (!this.ctx) return;
+    
+    // Ensure dimensions are up to date
+    this._resizeCanvas();
+    
+    if (!this.width || !this.height) return;
     
     this.ctx.clearRect(0, 0, this.width, this.height);
     

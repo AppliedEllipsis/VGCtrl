@@ -49,6 +49,7 @@ class PulsettoApp {
     this._bindEvents();
     this._bindBLEEvents();
     this._bindClockEvents();
+    this._initTimeline();
 
     // Set initial mode from HTML default (Sleep)
     const defaultMode = this.ui.modeSelect.value;
@@ -59,6 +60,85 @@ class PulsettoApp {
     this.log('Pulsetto Web Controller initialized (ASCII protocol)', 'info');
     this.log('Click "Scan for Device" to connect', 'info');
     this.log('Using ASCII protocol (verified with official app v2.2.91)', 'info');
+  }
+
+  _initTimeline() {
+    if (!this.ui.timelineRoot) return;
+    
+    this.timeline = new SessionTimeline('timeline-root', {
+      height: 120,
+      scrubEnabled: true,
+      showLabels: true
+    });
+    
+    // Handle timeline scrubbing (seeking)
+    this.timeline.onScrub((newElapsed) => {
+      this._seekSession(newElapsed);
+    });
+  }
+
+  _seekSession(newElapsed) {
+    if (!this.clock.isRunning && !this.clock.isPaused) return;
+    
+    // Clamp to valid range
+    const clamped = Math.max(0, Math.min(this.clock.totalDuration, newElapsed));
+    
+    // Update the clock's elapsed time
+    const wasRunning = this.clock.isRunning;
+    
+    if (wasRunning) {
+      // Pause briefly while seeking
+      this.clock.pause();
+    }
+    
+    // Adjust the session start time to reflect the new elapsed
+    const now = Date.now();
+    const totalDurationMs = this.clock.totalDuration * 1000;
+    const newElapsedMs = clamped * 1000;
+    
+    // Recalculate session start time
+    this.clock.sessionStartTime = now - newElapsedMs - this.clock.accumulatedPauseTime;
+    this.clock.elapsedSeconds = clamped;
+    this.clock.remainingSeconds = this.clock.totalDuration - clamped;
+    
+    // Send updated commands to device for the new position
+    if (this.modeEngine) {
+      let commands = this.modeEngine.reconnectCommands(
+        clamped,
+        this.clock.totalDuration,
+        this.baseStrength
+      );
+      
+      if (this.channelOverride !== 'auto') {
+        commands = applyChannelOverride(commands, this.channelOverride);
+      }
+      
+      if (commands.length > 0 && this.ble.canSendCommands) {
+        this.ble.sendCommands(commands);
+        this.log(`Seeked to ${this._formatTime(clamped)}`, 'info');
+      }
+    }
+    
+    // Update timeline
+    this.timeline.updateProgress(clamped, wasRunning);
+    
+    // Resume if was running
+    if (wasRunning) {
+      this.clock.resume();
+    }
+    
+    // Update UI
+    this._onTick({
+      remaining: this.clock.remainingSeconds,
+      elapsed: clamped,
+      progress: clamped / this.clock.totalDuration
+    });
+  }
+
+  _formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   }
 
   _cacheDOM() {
@@ -238,15 +318,7 @@ class PulsettoApp {
     });
     
     this.clock.on('tick', ({ remaining, elapsed, progress }) => {
-      this.ui.timerValue.textContent = SessionClock.formatTime(remaining);
-      this.ui.remainingTime.textContent = SessionClock.formatTime(remaining);
-      this.ui.elapsedTime.textContent = SessionClock.formatTime(elapsed);
-      this.ui.progressFill.style.width = `${progress * 100}%`;
-      
-      // Process tick for mode engine
-      if (this.modeEngine && this.clock.isRunning) {
-        this._processModeTick(elapsed);
-      }
+      this._onTick({ remaining, elapsed, progress });
     });
     
     this.clock.on('paused', () => {
@@ -355,6 +427,16 @@ class PulsettoApp {
       this.ui.modeTiming.textContent = description.timing;
     }
 
+    // Update timeline preview when not in session
+    if (this.timeline && !this.clock.isRunning && !this.clock.isPaused) {
+      this.ui.timelinePanel.classList.remove('hidden');
+      // Defer render to ensure container has dimensions
+      requestAnimationFrame(() => {
+        this.timeline.setMode(mode, this.timerMinutes * 60, this.baseStrength);
+        this.timeline.updateProgress(0, false);
+      });
+    }
+
     this._updateBreathingUI();
     this.log(`Mode selected: ${description.name}`, 'info');
   }
@@ -367,7 +449,48 @@ class PulsettoApp {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === channel);
     });
 
-    this.log(`Channel override: ${channel}`, 'info');
+    // If session is active (running or paused), immediately send channel change command
+    const sessionActive = this.clock.isRunning || this.clock.isPaused;
+    if (sessionActive && this.ble.canSendCommands) {
+      let activationCmd;
+      switch (channel) {
+        case 'left': activationCmd = PulsettoProtocol.Commands.activateLeft; break;
+        case 'right': activationCmd = PulsettoProtocol.Commands.activateRight; break;
+        case 'bilateral': activationCmd = PulsettoProtocol.Commands.activateBilateral; break;
+        default: 
+          // For 'auto', use the mode engine's current channel preference
+          if (this.modeEngine) {
+            const result = this.modeEngine.tick(
+              this.clock.elapsedSeconds,
+              this.clock.totalDuration,
+              this.baseStrength
+            );
+            // Determine activation command from active channel
+            switch (result.activeChannel) {
+              case 'left': activationCmd = PulsettoProtocol.Commands.activateLeft; break;
+              case 'right': activationCmd = PulsettoProtocol.Commands.activateRight; break;
+              case 'bilateral': activationCmd = PulsettoProtocol.Commands.activateBilateral; break;
+              default: activationCmd = PulsettoProtocol.Commands.stop;
+            }
+          }
+      }
+      
+      if (activationCmd) {
+        // Use try-catch and await to handle GATT operation conflicts gracefully
+        (async () => {
+          try {
+            await this.ble.sendCommand(activationCmd);
+            await this.ble.sendCommand(PulsettoProtocol.Commands.intensity(this.baseStrength));
+            this.log(`Channel switched to: ${channel}`, 'success');
+          } catch (err) {
+            // Log error but don't crash - GATT operations may conflict
+            this.log(`Channel switch failed: ${err.message}`, 'warning');
+          }
+        })();
+      }
+    } else {
+      this.log(`Channel override: ${channel} (${sessionActive ? 'will apply on resume' : 'ready'})`, 'info');
+    }
   }
 
   setTimerMinutes(minutes) {
@@ -401,6 +524,16 @@ class PulsettoApp {
     // Initialize mode engine
     this.modeEngine = ModeEngineFactory.create(this.selectedMode);
     const duration = this.timerMinutes * 60;
+    
+    // Initialize timeline
+    if (this.timeline) {
+      this.ui.timelinePanel.classList.remove('hidden');
+      // Defer render to ensure container has dimensions
+      requestAnimationFrame(() => {
+        this.timeline.setMode(this.selectedMode, duration, this.baseStrength);
+        this.timeline.updateProgress(0, true);
+      });
+    }
     
     // Get initial commands
     let initialCommands = this.modeEngine.start(this.baseStrength, duration);
@@ -444,6 +577,23 @@ class PulsettoApp {
 
   stopSession() {
     this.clock.stop();
+  }
+
+  _onTick({ remaining, elapsed, progress }) {
+    this.ui.timerValue.textContent = SessionClock.formatTime(remaining);
+    this.ui.remainingTime.textContent = SessionClock.formatTime(remaining);
+    this.ui.elapsedTime.textContent = SessionClock.formatTime(elapsed);
+    this.ui.progressFill.style.width = `${progress * 100}%`;
+    
+    // Update timeline
+    if (this.timeline && (this.clock.isRunning || this.clock.isPaused)) {
+      this.timeline.updateProgress(elapsed, this.clock.isRunning);
+    }
+    
+    // Process tick for mode engine
+    if (this.modeEngine && this.clock.isRunning) {
+      this._processModeTick(elapsed);
+    }
   }
 
   // Send stop command with fallback for compatibility
@@ -724,6 +874,11 @@ class PulsettoApp {
     this.ui.progressFill.style.width = '0%';
     this.ui.timerValue.textContent = SessionClock.formatTime(this.timerMinutes * 60);
     this.ui.breathingCircle.classList.remove('inhale', 'hold', 'exhale');
+    
+    // Hide timeline
+    if (this.ui.timelinePanel) {
+      this.ui.timelinePanel.classList.add('hidden');
+    }
     
     this.modeEngine = null;
     this.isStimulationActive = false;

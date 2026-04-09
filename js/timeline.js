@@ -1,14 +1,13 @@
 /**
- * Pulsetto Session Timeline (Visual Script Display)
+ * Pulsetto Session Timeline (Line Graph Visualization)
  *
- * Visualizes the session as timestamp-based script instructions.
- * Each instruction defines channel and intensity for a time range.
+ * Renders session as a line graph where:
+ * - Y-axis = intensity (0-9)
+ * - X-axis = time
+ * - Line color = channel (green=left, blue=right, purple=both, gray=off)
+ * - Arrows mark channel transitions
  *
- * The timeline:
- * 1. Renders script instructions as visual segments
- * 2. Tracks current position and highlights active instruction
- * 3. Notifies app when active instruction changes (for UI updates)
- * 4. No BLE commands sent - purely informational
+ * Timeline notifies app of script steps; commands sent only on manual seek.
  */
 
 class SessionTimeline {
@@ -19,10 +18,10 @@ class SessionTimeline {
     }
 
     this.options = {
-      height: options.height || 120,
-      segmentHeight: options.segmentHeight || 32,
+      height: options.height || 150,
       scrubEnabled: options.scrubEnabled !== false,
       showLabels: options.showLabels !== false,
+      padding: { top: 20, right: 10, bottom: 30, left: 40 },
       ...options
     };
 
@@ -69,11 +68,6 @@ class SessionTimeline {
         </div>
         <div class="timeline-canvas-wrapper">
           <canvas class="timeline-canvas"></canvas>
-          <div class="timeline-intensity-scale">
-            <span>9</span>
-            <span>5</span>
-            <span>0</span>
-          </div>
           <div class="timeline-scrubber">
             <div class="scrubber-handle">
               <div class="scrubber-tooltip">00:00</div>
@@ -99,6 +93,12 @@ class SessionTimeline {
             </svg>
           </button>
         </div>
+        <div class="timeline-legend">
+          <span class="legend-item"><span class="legend-color" style="background:#238636"></span>Left</span>
+          <span class="legend-item"><span class="legend-color" style="background:#1f6feb"></span>Right</span>
+          <span class="legend-item"><span class="legend-color" style="background:#8957e5"></span>Both</span>
+          <span class="legend-item"><span class="legend-color" style="background:#484f58"></span>Off</span>
+        </div>
       </div>
     `;
 
@@ -109,7 +109,6 @@ class SessionTimeline {
     this.positionDisplay = this.container.querySelector('.timeline-position');
     this.playStatus = this.container.querySelector('.play-status');
 
-    // Handle high-DPI displays
     this._setupHighDPI();
   }
 
@@ -131,21 +130,25 @@ class SessionTimeline {
     this.canvas.style.height = `${this.height}px`;
 
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Calculate graph area
+    const p = this.options.padding;
+    this.graphX = p.left;
+    this.graphY = p.top;
+    this.graphWidth = this.width - p.left - p.right;
+    this.graphHeight = this.height - p.top - p.bottom;
   }
 
   _bindEvents() {
-    // Window resize
     window.addEventListener('resize', () => {
       this._resizeCanvas();
       this.render();
     });
 
-    // Scrubber drag
     if (this.options.scrubEnabled) {
       this._bindScrubber();
     }
 
-    // Control buttons
     this.container.querySelector('.btn-back-30').addEventListener('click', () => this.scrub(-30));
     this.container.querySelector('.btn-back-10').addEventListener('click', () => this.scrub(-10));
     this.container.querySelector('.btn-fwd-10').addEventListener('click', () => this.scrub(10));
@@ -159,7 +162,9 @@ class SessionTimeline {
 
     const getElapsedFromX = (x) => {
       const rect = this.canvas.getBoundingClientRect();
-      const progress = Math.max(0, Math.min(1, (x - rect.left) / rect.width));
+      const graphStart = this.graphX;
+      const graphEnd = this.graphX + this.graphWidth;
+      const progress = Math.max(0, Math.min(1, (x - rect.left - graphStart) / this.graphWidth));
       return progress * this.state.totalDuration;
     };
 
@@ -170,7 +175,7 @@ class SessionTimeline {
       const elapsed = getElapsedFromX(x);
       this._setScrubberPosition(elapsed);
       if (this.onScrubCallback) {
-        this.onScrubCallback(elapsed, null); // null = not done yet
+        this.onScrubCallback(elapsed, null);
       }
     };
 
@@ -192,7 +197,7 @@ class SessionTimeline {
       const x = e.type.includes('touch') ? e.changedTouches[0].clientX : e.clientX;
       const elapsed = getElapsedFromX(x);
       if (this.onScrubCallback) {
-        this.onScrubCallback(elapsed, () => {}); // done callback
+        this.onScrubCallback(elapsed, () => {});
       }
     };
 
@@ -205,7 +210,6 @@ class SessionTimeline {
     document.addEventListener('mouseup', endDrag);
     document.addEventListener('touchend', endDrag);
 
-    // Click on canvas to seek
     this.canvas.addEventListener('click', (e) => {
       const elapsed = getElapsedFromX(e.clientX);
       if (this.onScrubCallback) {
@@ -228,7 +232,6 @@ class SessionTimeline {
     this.state.baseStrength = baseStrength;
     this.state.elapsed = 0;
 
-    // Generate script instructions
     this.script = new TimelineScript(mode, totalDuration, baseStrength);
     this.currentInstruction = null;
 
@@ -237,7 +240,6 @@ class SessionTimeline {
   }
 
   startTracking() {
-    // Start tick loop to check for script step changes
     this._tick();
   }
 
@@ -264,12 +266,9 @@ class SessionTimeline {
 
     const instruction = this.script.getInstructionAt(this.state.elapsed);
 
-    // Check if we stepped to a new instruction
     if (instruction && instruction !== this.currentInstruction) {
       this.currentInstruction = instruction;
 
-      // Notify app of script step change
-      // Note: isSeek=false for natural progression - app should NOT send commands
       if (this.onScriptStepCallback) {
         const step = {
           channel: instruction.channel,
@@ -278,13 +277,12 @@ class SessionTimeline {
           type: instruction.type,
           start: instruction.start,
           end: instruction.end,
-          isSeek: false  // Natural progression, not user seek
+          isSeek: false
         };
         this.onScriptStepCallback(step);
       }
     }
 
-    // Continue ticking
     this.tickTimer = setTimeout(() => this._tick(), 1000);
   }
 
@@ -294,7 +292,6 @@ class SessionTimeline {
     if (this.script) {
       const instruction = this.script.getInstructionAt(elapsedSeconds);
 
-      // Always notify on seek (user jumped to different point)
       if (instruction && this.onScriptStepCallback) {
         const step = {
           channel: instruction.channel,
@@ -347,19 +344,23 @@ class SessionTimeline {
     return newElapsed;
   }
 
-  seekComplete() {
-    // No-op for compatibility
+  seekComplete() {}
+
+  _timeToX(elapsed) {
+    return this.graphX + (elapsed / this.state.totalDuration) * this.graphWidth;
+  }
+
+  _intensityToY(intensity) {
+    const maxIntensity = 9;
+    return this.graphY + this.graphHeight - (intensity / maxIntensity) * this.graphHeight;
   }
 
   _updateScrubber() {
     if (this.state.totalDuration === 0) return;
 
-    const progress = this.state.elapsed / this.state.totalDuration;
-    const x = progress * this.width;
-
+    const x = this._timeToX(this.state.elapsed);
     this.scrubber.style.left = `${x}px`;
 
-    // Update tooltip with current script step info
     if (this.script) {
       const instruction = this.script.getInstructionAt(this.state.elapsed);
       const intensity = this.script.getIntensityAt(this.state.elapsed);
@@ -403,90 +404,251 @@ class SessionTimeline {
     if (!this.ctx || !this.script) return;
     this._resizeCanvas();
 
-    this.ctx.clearRect(0, 0, this.width, this.height);
-
+    const ctx = this.ctx;
     const instructions = this.script.getInstructions();
-    const barY = (this.height - this.options.segmentHeight) / 2;
 
-    // Draw each instruction as a segment
+    // Clear
+    ctx.clearRect(0, 0, this.width, this.height);
+
+    // Draw grid
+    this._drawGrid(ctx);
+
+    // Draw the intensity line
+    this._drawIntensityLine(ctx, instructions);
+
+    // Draw channel arrows at transitions
+    this._drawChannelArrows(ctx, instructions);
+
+    // Draw axes
+    this._drawAxes(ctx);
+
+    // Draw current position
+    this._drawPositionIndicator(ctx);
+  }
+
+  _drawGrid(ctx) {
+    const { graphX, graphY, graphWidth, graphHeight } = this;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 1;
+
+    // Horizontal grid lines (intensity levels 0-9)
+    for (let i = 0; i <= 9; i++) {
+      const y = this._intensityToY(i);
+      ctx.beginPath();
+      ctx.moveTo(graphX, y);
+      ctx.lineTo(graphX + graphWidth, y);
+      ctx.stroke();
+
+      // Y-axis labels
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font = '10px system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(i.toString(), graphX - 5, y + 3);
+    }
+
+    // Vertical time markers every minute
+    const minutes = Math.floor(this.state.totalDuration / 60);
+    for (let i = 1; i <= minutes; i++) {
+      const x = this._timeToX(i * 60);
+      ctx.beginPath();
+      ctx.moveTo(x, graphY);
+      ctx.lineTo(x, graphY + graphHeight);
+      ctx.stroke();
+    }
+  }
+
+  _drawIntensityLine(ctx, instructions) {
+    if (instructions.length === 0) return;
+
+    // Draw each segment with appropriate color
     instructions.forEach((instruction) => {
-      const startX = (instruction.start / this.state.totalDuration) * this.width;
-      const endX = (instruction.end / this.state.totalDuration) * this.width;
-      const width = endX - startX;
+      const startX = this._timeToX(instruction.start);
+      const endX = this._timeToX(instruction.end);
+      const color = this._getChannelColor(instruction.channel);
 
-      // Color based on channel
-      let color = this._getChannelColor(instruction.channel);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
 
-      // Draw segment background
-      this.ctx.fillStyle = color;
-      this.ctx.fillRect(startX, barY, width, this.options.segmentHeight);
-
-      // Draw intensity overlay
-      const intensity = instruction.type === 'fade'
-        ? (instruction.startIntensity + instruction.endIntensity) / 2
-        : instruction.intensity;
-      const opacity = (intensity / 9) * 0.4;
-      this.ctx.fillStyle = `rgba(255,255,255,${opacity})`;
-      this.ctx.fillRect(startX, barY, width, this.options.segmentHeight);
-
-      // Draw fade gradient if applicable
       if (instruction.type === 'fade') {
-        const gradient = this.ctx.createLinearGradient(startX, 0, endX, 0);
-        gradient.addColorStop(0, `rgba(255,255,255,${(instruction.startIntensity / 9) * 0.4})`);
-        gradient.addColorStop(1, `rgba(0,0,0,0.3)`);
-        this.ctx.fillStyle = gradient;
-        this.ctx.fillRect(startX, barY, width, this.options.segmentHeight);
+        // Draw fade as gradient line
+        const startY = this._intensityToY(instruction.startIntensity ?? this.state.baseStrength);
+        const endY = this._intensityToY(instruction.endIntensity ?? 0);
 
-        // Draw fade indicator arrow
-        this.ctx.fillStyle = '#fff';
-        this.ctx.beginPath();
-        const arrowY = barY + this.options.segmentHeight - 8;
-        this.ctx.moveTo(startX + 5, arrowY);
-        this.ctx.lineTo(startX + 12, arrowY - 3);
-        this.ctx.lineTo(startX + 12, arrowY + 3);
-        this.ctx.fill();
-      }
+        const gradient = ctx.createLinearGradient(startX, startY, endX, endY);
+        gradient.addColorStop(0, color);
+        gradient.addColorStop(1, '#484f58');
+        ctx.strokeStyle = gradient;
 
-      // Draw wave pattern indicator
-      if (instruction.type === 'wave') {
-        this.ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        const waveHeight = 8;
-        const waveY = barY + this.options.segmentHeight / 2;
-        for (let x = 0; x < width; x += 2) {
-          const y = waveY + Math.sin((x / width) * Math.PI * 4) * waveHeight;
-          if (x === 0) this.ctx.moveTo(startX + x, y);
-          else this.ctx.lineTo(startX + x, y);
-        }
-        this.ctx.stroke();
-      }
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      } else {
+        // Draw constant intensity line
+        const y = this._intensityToY(instruction.intensity ?? 0);
 
-      // Draw label
-      if (width > 30) {
-        this.ctx.fillStyle = '#fff';
-        this.ctx.font = 'bold 10px system-ui, sans-serif';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText(instruction.label, startX + width / 2, barY + 16);
-
-        // Draw type indicator for rest/breathing phases
-        if (instruction.type === 'rest') {
-          this.ctx.font = '9px system-ui, sans-serif';
-          this.ctx.fillStyle = 'rgba(255,255,255,0.7)';
-          this.ctx.fillText('OFF', startX + width / 2, barY + 26);
-        }
+        ctx.beginPath();
+        ctx.moveTo(startX, y);
+        ctx.lineTo(endX, y);
+        ctx.stroke();
       }
     });
 
-    // Draw current position indicator
-    const progress = this.state.elapsed / this.state.totalDuration;
-    const x = progress * this.width;
-    this.ctx.strokeStyle = '#fff';
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.moveTo(x, barY - 5);
-    this.ctx.lineTo(x, barY + this.options.segmentHeight + 5);
-    this.ctx.stroke();
+    // Draw fill under the line
+    ctx.save();
+    ctx.beginPath();
+    const firstX = this._timeToX(instructions[0].start);
+    ctx.moveTo(firstX, this.graphY + this.graphHeight);
+
+    instructions.forEach((instruction) => {
+      const startX = this._timeToX(instruction.start);
+      const endX = this._timeToX(instruction.end);
+
+      if (instruction.type === 'fade') {
+        const startY = this._intensityToY(instruction.startIntensity ?? this.state.baseStrength);
+        const endY = this._intensityToY(instruction.endIntensity ?? 0);
+        ctx.lineTo(startX, startY);
+        ctx.lineTo(endX, endY);
+      } else {
+        const y = this._intensityToY(instruction.intensity ?? 0);
+        ctx.lineTo(startX, y);
+        ctx.lineTo(endX, y);
+      }
+    });
+
+    ctx.lineTo(this._timeToX(instructions[instructions.length - 1].end), this.graphY + this.graphHeight);
+    ctx.closePath();
+
+    const fillGradient = ctx.createLinearGradient(0, this.graphY, 0, this.graphY + this.graphHeight);
+    fillGradient.addColorStop(0, 'rgba(137, 87, 229, 0.2)');
+    fillGradient.addColorStop(1, 'rgba(137, 87, 229, 0.05)');
+    ctx.fillStyle = fillGradient;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  _drawChannelArrows(ctx, instructions) {
+    const arrowSize = 8;
+
+    instructions.forEach((instruction, index) => {
+      if (index === 0) return; // Skip first
+
+      const prevInstruction = instructions[index - 1];
+      if (prevInstruction.channel === instruction.channel) return; // No change
+
+      const x = this._timeToX(instruction.start);
+      const y = this._intensityToY(instruction.intensity ?? 0);
+      const color = this._getChannelColor(instruction.channel);
+
+      // Draw arrow pointing in channel direction
+      ctx.fillStyle = color;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1;
+
+      ctx.beginPath();
+      if (instruction.channel === 'left') {
+        // Point left
+        ctx.moveTo(x - arrowSize, y);
+        ctx.lineTo(x, y - arrowSize/2);
+        ctx.lineTo(x, y + arrowSize/2);
+      } else if (instruction.channel === 'right') {
+        // Point right
+        ctx.moveTo(x + arrowSize, y);
+        ctx.lineTo(x, y - arrowSize/2);
+        ctx.lineTo(x, y + arrowSize/2);
+      } else if (instruction.channel === 'bilateral') {
+        // Diamond for both
+        ctx.moveTo(x, y - arrowSize);
+        ctx.lineTo(x + arrowSize, y);
+        ctx.lineTo(x, y + arrowSize);
+        ctx.lineTo(x - arrowSize, y);
+      } else {
+        // X for off
+        ctx.moveTo(x - arrowSize/2, y - arrowSize/2);
+        ctx.lineTo(x + arrowSize/2, y + arrowSize/2);
+        ctx.moveTo(x + arrowSize/2, y - arrowSize/2);
+        ctx.lineTo(x - arrowSize/2, y + arrowSize/2);
+        ctx.stroke();
+        return;
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  _drawAxes(ctx) {
+    const { graphX, graphY, graphWidth, graphHeight } = this;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 2;
+
+    // Y-axis
+    ctx.beginPath();
+    ctx.moveTo(graphX, graphY);
+    ctx.lineTo(graphX, graphY + graphHeight);
+    ctx.stroke();
+
+    // X-axis
+    ctx.beginPath();
+    ctx.moveTo(graphX, graphY + graphHeight);
+    ctx.lineTo(graphX + graphWidth, graphY + graphHeight);
+    ctx.stroke();
+
+    // X-axis labels (time)
+    const totalMinutes = Math.ceil(this.state.totalDuration / 60);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+
+    for (let i = 0; i <= totalMinutes; i += Math.ceil(totalMinutes / 4)) {
+      const x = this._timeToX(i * 60);
+      ctx.fillText(`${i}m`, x, graphY + graphHeight + 15);
+    }
+
+    // Y-axis label
+    ctx.save();
+    ctx.translate(15, graphY + graphHeight / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText('Intensity', 0, 0);
+    ctx.restore();
+  }
+
+  _drawPositionIndicator(ctx) {
+    const x = this._timeToX(this.state.elapsed);
+    const y = this._intensityToY(
+      this.script ? this.script.getIntensityAt(this.state.elapsed) : 0
+    );
+
+    // Vertical line
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(x, this.graphY);
+    ctx.lineTo(x, this.graphY + this.graphHeight);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Current point circle
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Outer ring
+    ctx.strokeStyle = this._getChannelColor(
+      this.script?.getInstructionAt(this.state.elapsed)?.channel ?? 'off'
+    );
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.stroke();
   }
 
   _getChannelColor(channel) {
@@ -498,14 +660,8 @@ class SessionTimeline {
     }
   }
 
-  // Placeholders for compatibility
-  setChannelOverride(channel) {
-    // Timeline just displays, override is handled by app
-  }
-
-  setIntensity(intensity) {
-    // Timeline just displays, intensity is handled by app
-  }
+  setChannelOverride(channel) {}
+  setIntensity(intensity) {}
 
   notifyExternalChange(type, value) {
     console.log('[Timeline] External change:', type, value);

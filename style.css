@@ -918,8 +918,8 @@ input[type="range"]:disabled {
   border-radius: 2px;
 }
 
-.legend-color.active-left { background: #1f6feb; }
-.legend-color.active-right { background: #238636; }
+.legend-color.active-left { background: #238636; }
+.legend-color.active-right { background: #1f6feb; }
 .legend-color.active-both { background: #8957e5; }
 .legend-color.active-rest { background: #484f58; }
 .legend-color.active-breathing {

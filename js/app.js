@@ -832,16 +832,36 @@ class PulsettoApp {
     // Initialize timeline
     if (this.timeline) {
       this.ui.timelinePanel.classList.remove('hidden');
+      // Set mode and get first script step for UI initialization
+      this.timeline.setMode(this.selectedMode, duration, this.baseStrength);
+      // Read first script entry and set UI to match
+      const firstStep = this.timeline.script?.getInstructionAt(0);
+      if (firstStep) {
+        this.log(`Initial script step: ${firstStep.label}, channel=${firstStep.channel}, intensity=${firstStep.intensity}`, 'info');
+        // Update UI to match initial script state (don't send commands - mode engine handles that)
+        this.ui.intensityValue.textContent = firstStep.intensity ?? this.baseStrength;
+        this.ui.intensitySlider.value = firstStep.intensity ?? this.baseStrength;
+        // Update channel buttons to show initial channel
+        [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
+          if (btn) btn.classList.remove('active');
+        });
+        let initialBtn = null;
+        switch(firstStep.channel) {
+          case 'left': initialBtn = this.ui.channelLeft; break;
+          case 'right': initialBtn = this.ui.channelRight; break;
+          case 'bilateral': initialBtn = this.ui.channelBoth; break;
+          default: initialBtn = this.ui.channelAuto;
+        }
+        if (initialBtn) initialBtn.classList.add('active');
+      }
       // Defer render to ensure container has dimensions
       requestAnimationFrame(() => {
-        this.timeline.setMode(this.selectedMode, duration, this.baseStrength);
         this.timeline.updateProgress(0, true);
-        // Start timeline tracking (visual only, no BLE commands)
         this.timeline.startTracking();
       });
     }
 
-    // Get initial commands
+    // Get initial commands from mode engine
     let initialCommands = this.modeEngine.start(this.baseStrength, duration);
 
     // Apply channel override if set

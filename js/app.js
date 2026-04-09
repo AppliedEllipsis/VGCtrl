@@ -33,6 +33,7 @@ class PulsettoApp {
 
     // Track if user manually set intensity (preserved across mode changes until connect)
     this._userSetIntensity = false;
+    this._userSetDuration = false;  // Track if user manually set timer
 
     // Audio feedback settings (toggle UI coming in T04)
     this.audioEnabled = true;
@@ -68,14 +69,39 @@ class PulsettoApp {
     // Load saved mode from localStorage, or use HTML default
     const savedMode = localStorage.getItem('pulsetto_lastMode');
     const availableModes = Object.keys(PulsettoProtocol.Modes);
-    const initialMode = savedMode && availableModes.includes(savedMode) 
-      ? savedMode 
+    const initialMode = savedMode && availableModes.includes(savedMode)
+      ? savedMode
       : this.ui.modeSelect.value;
-    
+
     // Update select element to match saved/default mode
     if (this.ui.modeSelect.value !== initialMode) {
       this.ui.modeSelect.value = initialMode;
     }
+
+    // Load saved intensity (1-9) and timer (1-60) from localStorage
+    // When loaded, mark as user-set so mode changes don't override them
+    try {
+      const savedIntensity = localStorage.getItem('pulsetto_lastIntensity');
+      if (savedIntensity) {
+        const parsed = parseInt(savedIntensity, 10);
+        if (!isNaN(parsed) && parsed >= 1 && parsed <= 9) {
+          this.baseStrength = parsed;
+          this._userSetIntensity = true;
+        }
+      }
+
+      const savedDuration = localStorage.getItem('pulsetto_lastDuration');
+      if (savedDuration) {
+        const parsed = parseInt(savedDuration, 10);
+        if (!isNaN(parsed) && parsed >= 1 && parsed <= 60) {
+          this.timerMinutes = parsed;
+          this._userSetDuration = true;
+        }
+      }
+    } catch (e) {
+      // Ignore storage errors (private mode, etc.)
+    }
+
     this.selectMode(initialMode);
 
     this._updateUI();
@@ -560,15 +586,19 @@ class PulsettoApp {
     const description = ModeEngineFactory.getDescription(mode);
 
     if (modeConfig && !this.clock.isRunning && !this.clock.isPaused) {
-      this.timerMinutes = modeConfig.duration;
-      // Preserve user-set intensity - only update if never manually set (default is 8 from constructor)
-      // User can pre-set intensity before connect; mode default only applies on fresh load
+      // Only apply mode defaults if user hasn't explicitly set values
+      // _userSetIntensity is set true when user manually changes intensity
+      // _userSetDuration is set true when user manually changes timer
       if (!this._userSetIntensity) {
         this.baseStrength = modeConfig.strength;
-        this.ui.intensitySlider.value = this.baseStrength;
-        this.ui.intensityValue.textContent = this.baseStrength;
+      }
+      if (!this._userSetDuration) {
+        this.timerMinutes = modeConfig.duration;
       }
 
+      // Update UI to reflect current values
+      this.ui.intensitySlider.value = this.baseStrength;
+      this.ui.intensityValue.textContent = this.baseStrength;
       this.ui.timerSlider.value = this.timerMinutes;
       this.ui.timerValue.textContent = SessionClock.formatTime(this.timerMinutes * 60);
     }
@@ -888,7 +918,15 @@ class PulsettoApp {
 
   setTimerMinutes(minutes) {
     this.timerMinutes = Math.max(1, Math.min(60, minutes));
+    this._userSetDuration = true; // Mark as manually set by user
     this.ui.timerValue.textContent = SessionClock.formatTime(this.timerMinutes * 60);
+
+    // Save to localStorage
+    try {
+      localStorage.setItem('pulsetto_lastDuration', String(this.timerMinutes));
+    } catch (e) {
+      // Ignore storage errors (private mode, quota exceeded, etc.)
+    }
   }
 
   adjustTimer(delta) {
@@ -906,6 +944,13 @@ class PulsettoApp {
     this.baseStrength = value;
     this._userSetIntensity = true; // Mark as manually set by user
     this.ui.intensityValue.textContent = value;
+
+    // Save to localStorage
+    try {
+      localStorage.setItem('pulsetto_lastIntensity', String(value));
+    } catch (e) {
+      // Ignore storage errors (private mode, quota exceeded, etc.)
+    }
 
     // Cancel any active fade when user manually sets intensity
     if (this._fadeState !== 'off' || this._fadeExecuting) {

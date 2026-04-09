@@ -396,6 +396,43 @@ body {
   box-shadow: 0 0 0 2px var(--color-accent);
 }
 
+/* Fade Control */
+.fade-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.fade-control label {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.fade-control select {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.fade-control select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fade-control select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
 .mode-selector select {
   width: 100%;
   padding: 10px 12px;

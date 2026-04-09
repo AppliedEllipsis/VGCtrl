@@ -24,6 +24,12 @@ class PulsettoApp {
     this.channelOverride = 'auto'; // 'auto', 'left', 'right', 'bilateral'
     this._isSeeking = false;
     this._seekTimeout = null;
+    
+    // Fade state: 'off', 'in', 'out', 'pulse'
+    this._fadeState = 'off';
+    this._fadeAbortController = null;
+    this._fadeExecuting = false; // true while fade is actively running
+    this._lastFadeIntensity = null; // track last intensity set by fade
 
     // Logging state
     this.autoScroll = true;
@@ -129,8 +135,8 @@ class PulsettoApp {
         this.baseStrength
       );
       
-      // Apply channel override if set (skip for 'fade' since it's a one-time action)
-      if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
+      // Apply channel override if set
+      if (this.channelOverride !== 'auto') {
         commands = applyChannelOverride(commands, this.channelOverride);
       }
       
@@ -218,7 +224,7 @@ class PulsettoApp {
     this.ui.channelLeft = document.getElementById('channel-left');
     this.ui.channelRight = document.getElementById('channel-right');
     this.ui.channelBoth = document.getElementById('channel-both');
-    this.ui.channelFade = document.getElementById('channel-fade');
+    this.ui.fadeSelect = document.getElementById('fade-select');
     
     // Breathing guide
     this.ui.breathingGuide = document.getElementById('breathing-guide');
@@ -274,10 +280,13 @@ class PulsettoApp {
     this.ui.btnResume.addEventListener('click', () => this.resumeSession());
     this.ui.btnStop.addEventListener('click', () => this.stopSession());
 
-    // Channel override
-    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth, this.ui.channelFade].forEach(btn => {
+    // Channel override buttons
+    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
       btn?.addEventListener('click', (e) => this.setChannelOverride(e.target.dataset.channel));
     });
+    
+    // Fade dropdown
+    this.ui.fadeSelect?.addEventListener('change', (e) => this._onFadeSelect(e.target.value));
 
     // Logs
     this.ui.btnClearLogs.addEventListener('click', () => this.clearLogs());
@@ -335,6 +344,9 @@ class PulsettoApp {
       if (this.timeline) {
         this.timeline.seekComplete(); // Clear any pending seek
       }
+      
+      // Cancel any active fade
+      this._cancelFade();
       
       if (unexpected) {
         this.log('Connection lost unexpectedly', 'error');
@@ -519,16 +531,10 @@ class PulsettoApp {
   setChannelOverride(channel) {
     this.channelOverride = channel;
 
-    // Update button states (all 5 buttons now)
-    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth, this.ui.channelFade].forEach(btn => {
+    // Update button states
+    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === channel);
     });
-
-    // Handle fade action specially
-    if (channel === 'fade') {
-      this._triggerFade();
-      return;
-    }
 
     // If session is active (running or paused), send channel command with 2s delay then intensity
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
@@ -569,19 +575,69 @@ class PulsettoApp {
     }
   }
 
-  // Trigger fade action - ramps intensity up then down over 30 seconds
-  async _triggerFade() {
+  // Handle fade dropdown selection
+  _onFadeSelect(mode) {
+    // Cancel any existing fade first
+    if (this._fadeAbortController) {
+      this._fadeAbortController.abort();
+      this._fadeAbortController = null;
+    }
+    
+    this._fadeState = mode;
+    
+    if (mode === 'off') {
+      this._cancelFade();
+      this.log('Fade: off', 'info');
+      return;
+    }
+    
+    // Start the fade
+    this._triggerFade(mode);
+  }
+  
+  // Reset fade select dropdown to off
+  _resetFadeSelect() {
+    if (this.ui.fadeSelect) {
+      this.ui.fadeSelect.value = 'off';
+    }
+    this._fadeState = 'off';
+  }
+  
+  // Cancel any running fade
+  _cancelFade() {
+    this._fadeExecuting = false;
+    this._lastFadeIntensity = null;
+    if (this._fadeAbortController) {
+      this._fadeAbortController.abort();
+      this._fadeAbortController = null;
+    }
+    this._fadeState = 'off';
+    this._resetFadeSelect();
+  }
+
+  // Trigger fade action with specified mode
+  async _triggerFade(mode) {
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
     if (!sessionActive || !this.ble.canSendCommands) {
       this.log('Fade: Start session first', 'warning');
+      this._cancelFade();
       return;
     }
 
-    this.log('Starting fade...', 'info');
+    // Cancel any previous fade
+    if (this._fadeAbortController) {
+      this._fadeAbortController.abort();
+    }
+    
+    // Create new abort controller for this fade
+    this._fadeAbortController = new AbortController();
+    const signal = this._fadeAbortController.signal;
+    
+    this.log(`Fade ${mode} starting...`, 'info');
     
     // Determine current channel
     let currentChannel = PulsettoProtocol.Commands.activateBilateral;
-    if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
+    if (this.channelOverride !== 'auto') {
       switch (this.channelOverride) {
         case 'left': currentChannel = PulsettoProtocol.Commands.activateLeft; break;
         case 'right': currentChannel = PulsettoProtocol.Commands.activateRight; break;
@@ -600,38 +656,125 @@ class PulsettoApp {
       }
     }
 
-    // Build fade sequence: ramp up from 1 to target over 15s, then down over 15s
     const targetStrength = this.baseStrength;
     const fadeCommands = [];
     
     // Activate channel first
-    fadeCommands.push(currentChannel);
+    fadeCommands.push({ cmd: currentChannel, step: 0, total: 0, label: 'activate' });
     
-    // Ramp up: 1 -> target over 15 seconds (every 2s)
-    const rampSteps = Math.ceil(targetStrength / 2); 
-    for (let i = 0; i < rampSteps; i++) {
-      const level = Math.min(Math.ceil(1 + (targetStrength - 1) * ((i + 1) / rampSteps)), 9);
-      fadeCommands.push(PulsettoProtocol.Commands.intensity(level));
-    }
+    // Get starting intensity (current effective strength or base)
+    const startStrength = this.effectiveStrength || this.baseStrength;
     
-    // Ramp down: target -> 1 over 15 seconds (every 2s)
-    for (let i = rampSteps - 1; i >= 0; i--) {
-      const level = Math.max(Math.ceil(1 + (targetStrength - 1) * (i / rampSteps)), 1);
-      fadeCommands.push(PulsettoProtocol.Commands.intensity(level));
+    // Build intensity sequence based on mode
+    if (mode === 'in') {
+      // Ramp up: startStrength -> target over ~15 seconds
+      const rampSteps = Math.ceil(Math.abs(targetStrength - startStrength) / 2);
+      if (rampSteps > 0) {
+        for (let i = 0; i < rampSteps; i++) {
+          const level = Math.min(Math.ceil(startStrength + (targetStrength - startStrength) * ((i + 1) / rampSteps)), 9);
+          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: i + 1, total: rampSteps, label: `intensity ${level}` });
+        }
+      } else {
+        // Already at target
+        fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(targetStrength), step: 1, total: 1, label: `intensity ${targetStrength}` });
+      }
+    } else if (mode === 'out') {
+      // Start at current, then ramp down: startStrength -> 1 over ~15 seconds
+      const rampSteps = Math.ceil((startStrength - 1) / 2);
+      if (rampSteps > 0) {
+        for (let i = rampSteps - 1; i >= 0; i--) {
+          const level = Math.max(Math.ceil(1 + (startStrength - 1) * (i / rampSteps)), 1);
+          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: rampSteps - i, total: rampSteps, label: `intensity ${level}` });
+        }
+      } else {
+        // Already at minimum
+        fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(1), step: 1, total: 1, label: `intensity 1` });
+      }
+    } else if (mode === 'pulse') {
+      // Ramp up then down, starting from current intensity
+      const midPoint = (startStrength + targetStrength) / 2;
+      const upSteps = Math.ceil(Math.abs(targetStrength - startStrength) / 2);
+      const downSteps = Math.ceil((targetStrength - 1) / 2);
+      
+      // Ramp up to target
+      if (upSteps > 0) {
+        for (let i = 0; i < upSteps; i++) {
+          const level = Math.min(Math.ceil(startStrength + (targetStrength - startStrength) * ((i + 1) / upSteps)), 9);
+          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: i + 1, total: upSteps + downSteps, label: `intensity ${level} (up)` });
+        }
+      }
+      
+      // Ramp down to 1
+      if (downSteps > 0) {
+        for (let i = downSteps - 1; i >= 0; i--) {
+          const level = Math.max(Math.ceil(1 + (targetStrength - 1) * (i / downSteps)), 1);
+          fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(level), step: upSteps + (downSteps - i), total: upSteps + downSteps, label: `intensity ${level} (down)` });
+        }
+      }
+      
+      if (fadeCommands.length === 1) {
+        // Only channel activation, add intensity commands
+        fadeCommands.push({ cmd: PulsettoProtocol.Commands.intensity(targetStrength), step: 1, total: 1, label: `intensity ${targetStrength}` });
+      }
     }
 
-    // Execute fade sequence
-    for (const cmd of fadeCommands) {
-      await this.ble.sendCommand(cmd);
-      if (cmd !== fadeCommands[fadeCommands.length - 1]) {
+    // Execute fade sequence with step-by-step logging
+    this._fadeExecuting = true;
+    
+    for (let i = 0; i < fadeCommands.length; i++) {
+      // Check if cancelled
+      if (signal.aborted) {
+        this._fadeExecuting = false;
+        this._lastFadeIntensity = null;
+        this.log('Fade cancelled', 'warning');
+        return;
+      }
+      
+      const item = fadeCommands[i];
+      
+      // Log step progress
+      if (item.total > 0) {
+        this.log(`Fade ${mode}: step ${item.step}/${item.total} - ${item.label}`, 'info');
+      } else {
+        this.log(`Fade ${mode}: ${item.label}`, 'info');
+      }
+      
+      // Update intensity UI if this is an intensity command (matches "5\n" pattern)
+      const intensityMatch = item.cmd.match(/^([1-9])\n$/);
+      if (intensityMatch) {
+        const level = parseInt(intensityMatch[1]);
+        this._lastFadeIntensity = level; // track so setIntensity knows it's from fade
+        this.ui.intensitySlider.value = level;
+        this.ui.intensityValue.textContent = level;
+        this.effectiveStrength = level;
+      }
+      
+      // Send command
+      await this.ble.sendCommand(item.cmd);
+      
+      // Delay between commands (except last one)
+      if (i < fadeCommands.length - 1) {
         await new Promise(r => setTimeout(r, 2000));
       }
     }
     
-    this.log('Fade complete', 'success');
+    this._fadeExecuting = false;
     
-    // Clear fade button active state after completion
-    this.ui.channelFade.classList.remove('active');
+    // Keep the final intensity - update baseStrength so mode engine uses it
+    const finalIntensity = this.effectiveStrength || this.baseStrength;
+    this.baseStrength = finalIntensity;
+    
+    // Ensure UI reflects the retained intensity
+    this.ui.intensitySlider.value = finalIntensity;
+    this.ui.intensityValue.textContent = finalIntensity;
+    
+    this.log(`Fade ${mode} complete - intensity stays at ${finalIntensity}`, 'success');
+    
+    // Auto-reset to off after completion
+    this._fadeState = 'off';
+    this._fadeAbortController = null;
+    this._lastFadeIntensity = null;
+    this._resetFadeSelect();
   }
 
   setTimerMinutes(minutes) {
@@ -645,8 +788,20 @@ class PulsettoApp {
   }
 
   setIntensity(value) {
+    // If fade is executing and value matches what fade just set, it's a programmatic update - skip
+    if (this._fadeExecuting && value === this._lastFadeIntensity) {
+      this.baseStrength = value;
+      return;
+    }
+    
     this.baseStrength = value;
     this.ui.intensityValue.textContent = value;
+    
+    // Cancel any active fade when user manually sets intensity
+    if (this._fadeState !== 'off' || this._fadeExecuting) {
+      this.log(`Manual intensity ${value} - cancelling fade`, 'warning');
+      this._cancelFade();
+    }
     
     // Queue intensity command (debounced, coalesces with pending channel)
     const sessionActive = this.clock.isRunning || this.clock.isPaused;
@@ -681,8 +836,8 @@ class PulsettoApp {
     // Get initial commands
     let initialCommands = this.modeEngine.start(this.baseStrength, duration);
 
-    // Apply channel override if set (skip for 'fade' since it's a one-time action)
-    if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
+    // Apply channel override if set
+    if (this.channelOverride !== 'auto') {
       initialCommands = applyChannelOverride(initialCommands, this.channelOverride);
     }
 
@@ -773,9 +928,9 @@ class PulsettoApp {
       this.baseStrength
     );
 
-    // Apply channel override if set (skip for 'fade' since it's a one-time action)
+    // Apply channel override if set
     let commands = result.commands;
-    if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade' && commands.length > 0) {
+    if (this.channelOverride !== 'auto' && commands.length > 0) {
       commands = applyChannelOverride(commands, this.channelOverride);
     }
 
@@ -815,8 +970,8 @@ class PulsettoApp {
       this.baseStrength
     );
 
-    // Apply channel override if set (skip for 'fade' since it's a one-time action)
-    if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
+    // Apply channel override if set
+    if (this.channelOverride !== 'auto') {
       commands = applyChannelOverride(commands, this.channelOverride);
     }
 
@@ -846,7 +1001,7 @@ class PulsettoApp {
         
         // Determine current channel
         let channelCmd;
-        if (this.channelOverride !== 'auto' && this.channelOverride !== 'fade') {
+        if (this.channelOverride !== 'auto') {
           switch (this.channelOverride) {
             case 'left': channelCmd = PulsettoProtocol.Commands.activateLeft; break;
             case 'right': channelCmd = PulsettoProtocol.Commands.activateRight; break;
@@ -952,8 +1107,8 @@ class PulsettoApp {
   }
 
   _updateChannelButtons() {
-    // Update channel override buttons to reflect current state
-    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth, this.ui.channelFade].forEach(btn => {
+    // Update channel override buttons to reflect current state (fade handled separately)
+    [this.ui.channelAuto, this.ui.channelLeft, this.ui.channelRight, this.ui.channelBoth].forEach(btn => {
       if (btn) btn.classList.toggle('active', btn.dataset.channel === this.channelOverride);
     });
   }
@@ -1014,6 +1169,11 @@ class PulsettoApp {
     this.ui.timerSlider.disabled = sessionActive;
     this.ui.btnTimerUp.disabled = sessionActive;
     this.ui.btnTimerDown.disabled = sessionActive;
+    
+    // Enable fade only when session is active
+    if (this.ui.fadeSelect) {
+      this.ui.fadeSelect.disabled = !sessionActive || !this.ble.isConnected;
+    }
   }
 
   _enableSessionControls(enabled) {
@@ -1023,6 +1183,10 @@ class PulsettoApp {
     this.ui.btnTimerUp.disabled = !enabled;
     this.ui.btnTimerDown.disabled = !enabled;
     this.ui.btnStart.disabled = !enabled;
+    // Disable fade dropdown when not connected
+    if (this.ui.fadeSelect) {
+      this.ui.fadeSelect.disabled = !enabled;
+    }
   }
 
   _updateBreathingUI() {
@@ -1069,6 +1233,9 @@ class PulsettoApp {
     this.effectiveStrength = null;
     this.activeChannel = ActiveChannel.OFF;
     this.breathingPhase = null;
+    
+    // Cancel any active fade
+    this._cancelFade();
   }
 
   // Logging
@@ -1088,9 +1255,11 @@ class PulsettoApp {
     entry.innerHTML = html;
     this.ui.logContainer.appendChild(entry);
 
-    // Smart auto-scroll: only scroll if user is at bottom or auto-scroll is enabled
-    if (this._shouldAutoScroll()) {
-      this.ui.logContainer.scrollTop = this.ui.logContainer.scrollHeight;
+    // Auto-scroll to bottom if enabled (use rAF to ensure DOM is updated)
+    if (this.autoScroll) {
+      requestAnimationFrame(() => {
+        this.ui.logContainer.scrollTop = this.ui.logContainer.scrollHeight;
+      });
     }
 
     // Also log to console

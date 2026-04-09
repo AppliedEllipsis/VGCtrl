@@ -1,11 +1,12 @@
 # GSD State
 
-**Active Milestone:** None
-**Active Slice:** None
-**Phase:** pre-planning
+**Active Milestone:** M001: M001
+**Active Slice:** S01: S01
+**Phase:** planning
 **Requirements Status:** 0 active · 0 validated · 0 deferred · 0 out of scope
 
 ## Milestone Registry
+- 🔄 **M001:** M001
 
 ## Recent Decisions
 - None recorded
@@ -14,4 +15,4 @@
 - None
 
 ## Next Action
-No milestones found. Run /gsd to create one.
+Plan slice S01 (S01).

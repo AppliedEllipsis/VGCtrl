@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "exported_at": "2026-04-09T04:46:04.891Z",
+  "milestones": [
+    {
+      "id": "M001",
+      "title": "M001",
+      "status": "queued",
+      "depends_on": [],
+      "created_at": "2026-04-09T04:46:04.876Z",
+      "completed_at": null,
+      "vision": "",
+      "success_criteria": [],
+      "key_risks": [],
+      "proof_strategy": [],
+      "verification_contract": "",
+      "verification_integration": "",
+      "verification_operational": "",
+      "verification_uat": "",
+      "definition_of_done": [],
+      "requirement_coverage": "",
+      "boundary_map_markdown": ""
+    }
+  ],
+  "slices": [
+    {
+      "milestone_id": "M001",
+      "id": "S01",
+      "title": "S01",
+      "status": "pending",
+      "risk": "medium",
+      "depends": [],
+      "demo": "",
+      "created_at": "2026-04-09T04:46:04.876Z",
+      "completed_at": null,
+      "full_summary_md": "",
+      "full_uat_md": "",
+      "goal": "",
+      "success_criteria": "",
+      "proof_level": "",
+      "integration_closure": "",
+      "observability_impact": "",
+      "sequence": 0,
+      "replan_triggered_at": null
+    }
+  ],
+  "tasks": [
+    {
+      "milestone_id": "M001",
+      "slice_id": "S01",
+      "id": "T01",
+      "title": "Implemented fade control with intensity bounds validation and proper ramp targets",
+      "status": "complete",
+      "one_liner": "Implemented fade control with intensity bounds validation and proper ramp targets",
+      "narrative": "Updated the fade functionality based on user feedback:\n\n1. **Bounds validation**: Fade In is blocked when already at 9, Fade Out is blocked when already at 1\n2. **Fade In target**: Now ramps up to 9 (max) instead of baseStrength\n3. **Fade Out ending**: Sends stop command after ramping down to 1, keeping session timer running\n4. **Pulse mode**: Ramps to 9 then down to stop\n\nThe session timer continues running after fade completes. The device receives stop command (intensity 0) but the web app session stays active.",
+      "verification_result": "Verified fade logic: startStrength validation at function entry, ramp calculations use target=9 for up and include final stop command for down/pulse modes",
+      "duration": "",
+      "completed_at": "2026-04-09T04:46:04.876Z",
+      "blocker_discovered": false,
+      "deviations": "None.",
+      "known_issues": "None.",
+      "key_files": [
+        "js/app.js"
+      ],
+      "key_decisions": [
+        "Fade In goes to 9 max",
+        "Fade Out ends with stop command",
+        "Bounds check prevents invalid fade selections"
+      ],
+      "full_summary_md": "---\nid: T01\nparent: S01\nmilestone: M001\nkey_files:\n  - js/app.js\nkey_decisions:\n  - Fade In goes to 9 max\n  - Fade Out ends with stop command\n  - Bounds check prevents invalid fade selections\nduration: \nverification_result: untested\ncompleted_at: 2026-04-09T04:46:04.876Z\nblocker_discovered: false\n---\n\n# T01: Implemented fade control with intensity bounds validation and proper ramp targets\n\n**Implemented fade control with intensity bounds validation and proper ramp targets**\n\n## What Happened\n\nUpdated the fade functionality based on user feedback:\n\n1. **Bounds validation**: Fade In is blocked when already at 9, Fade Out is blocked when already at 1\n2. **Fade In target**: Now ramps up to 9 (max) instead of baseStrength\n3. **Fade Out ending**: Sends stop command after ramping down to 1, keeping session timer running\n4. **Pulse mode**: Ramps to 9 then down to stop\n\nThe session timer continues running after fade completes. The device receives stop command (intensity 0) but the web app session stays active.\n\n## Verification\n\nVerified fade logic: startStrength validation at function entry, ramp calculations use target=9 for up and include final stop command for down/pulse modes\n\n## Verification Evidence\n\n| # | Command | Exit Code | Verdict | Duration |\n|---|---------|-----------|---------|----------|\n| — | No verification commands discovered | — | — | — |\n\n## Deviations\n\nNone.\n\n## Known Issues\n\nNone.\n\n## Files Created/Modified\n\n- `js/app.js`\n",
+      "description": "",
+      "estimate": "",
+      "files": [],
+      "verify": "",
+      "inputs": [],
+      "expected_output": [],
+      "observability_impact": "",
+      "full_plan_md": "",
+      "sequence": 0
+    }
+  ],
+  "decisions": [],
+  "verification_evidence": []
+}

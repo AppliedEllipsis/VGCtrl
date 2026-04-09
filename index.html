@@ -93,7 +93,15 @@
             <button id="channel-left" class="btn-channel" data-channel="left">Left Only</button>
             <button id="channel-right" class="btn-channel" data-channel="right">Right Only</button>
             <button id="channel-both" class="btn-channel" data-channel="bilateral">Both</button>
-            <button id="channel-fade" class="btn-channel btn-channel-fade" data-channel="fade">⏫ Fade</button>
+          </div>
+          <div class="fade-control">
+            <label for="fade-select">Fade:</label>
+            <select id="fade-select" class="fade-select">
+              <option value="off">Off</option>
+              <option value="in">Fade In (ramp up)</option>
+              <option value="out">Fade Out (ramp down)</option>
+              <option value="pulse">Pulse (up then down)</option>
+            </select>
           </div>
         </div>
 
